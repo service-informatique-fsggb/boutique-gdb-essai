@@ -1,5 +1,5 @@
 # Publie le site ET un instantane des donnees de la boutique client
-# (donnees/client.json), rafraichi toutes les 10 minutes : la premiere visite
+# (donnees/client.json), rafraichi toutes les 20 minutes : la premiere visite
 # s'affiche sans attendre Apps Script. Fichier ecrit par construire.mjs.
 name: Publier la boutique
 
@@ -7,7 +7,10 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "*/10 * * * *"
+    # Depot prive : chaque passage compte ~1 min du quota Actions (3000 min/mois
+    # sur le compte Pro). Toutes les 20 min = ~2200 min/mois. Depot public :
+    # gratuit, on pourra alors revenir a */10.
+    - cron: "*/20 * * * *"
   workflow_dispatch:
 
 permissions:
