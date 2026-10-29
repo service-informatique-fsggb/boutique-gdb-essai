@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!--
+  COQUILLE DE LA BOUTIQUE SERVIE PAR GITHUB — ecrite par construire.mjs sous
+  index.html, vendeur/, admin/ et test/, avec le chemin vers la racine.
+  La page affichee depend du chemin et des parametres : voir chargeur.js.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boutique GDB</title>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: Georgia, serif; color: #0b1a6b; background: #fff; }
+  .chargeur { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; box-sizing: border-box; text-align: center; }
+  .chargeur a { color: #0b1a6b; }
+  iframe.page { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+</style>
+</head>
+<body>
+<div class="chargeur" id="chargeur">Chargement de la boutique…</div>
+<script src="../chargeur.js?v=1473c5791e" onerror="document.getElementById('chargeur').textContent = 'La boutique n\x27a pas pu être chargée (réseau). Réessayez dans un instant.'"></script>
+</body>
+</html>

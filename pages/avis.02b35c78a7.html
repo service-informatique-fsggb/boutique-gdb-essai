@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><script>
+  // Boutique ouverte par le chargeur anonyme (voir BACK_AppelsAnonymes.js) :
+  // la page n'est PAS servie par HtmlService, google.script.run n'existe donc
+  // pas. Ce remplacant offre la meme interface (withSuccessHandler,
+  // withFailureHandler, withUserObject, puis nomDeFonction(args...)) et envoie
+  // chaque appel a doPost SANS cookie : aucun compte Google n'intervient.
+  // Insere par le serveur en tete de page, avant tout autre script.
+  (function () {
+    if (typeof google !== "undefined" && google.script && google.script.run) return;
+    var URL_EXEC = "https://script.google.com/macros/s/AKfycbwW5GeOkiFxzGFXulOqIjNqGaZEMEk8QnHiHujMLhS59MN09ECAXTZITMmCuFcn3aLD/exec";
+
+    function appeler(nom, args, etat) {
+      var succes = etat.withSuccessHandler;
+      var echec = etat.withFailureHandler || function (err) { if (window.console) console.error(err); };
+      var objet = etat.withUserObject;
+      fetch(URL_EXEC, {
+        method: "POST",
+        credentials: "omit",
+        // text/plain : requete « simple », sans verification prealable (CORS)
+        // qu'Apps Script ne sait pas traiter.
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ __appelBoutique: nom, args: Array.prototype.slice.call(args) })
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error("Le serveur de la boutique ne répond pas (" + r.status + ").");
+          return r.json();
+        })
+        .then(function (reponse) {
+          if (reponse && reponse.ok) { if (succes) succes(reponse.valeur, objet); }
+          else echec(new Error(reponse && reponse.erreur || "Erreur inconnue du serveur."), objet);
+        }, function (err) {
+          echec(err instanceof Error ? err : new Error(String(err)), objet);
+        });
+    }
+
+    function relais(etat) {
+      return new Proxy({}, {
+        get: function (_, nom) {
+          if (nom === "withSuccessHandler" || nom === "withFailureHandler" || nom === "withUserObject") {
+            return function (valeur) {
+              var copie = {};
+              Object.keys(etat).forEach(function (k) { copie[k] = etat[k]; });
+              copie[nom] = valeur;
+              return relais(copie);
+            };
+          }
+          if (typeof nom !== "string") return undefined;
+          return function () { appeler(nom, arguments, etat); };
+        }
+      });
+    }
+
+    window.google = window.google || {};
+    window.google.script = window.google.script || {};
+    window.google.script.run = relais({});
+  })();
+</script>
+
+  <script>
+  /* ===================== Stockage du navigateur =====================
+     Inclus EN PREMIER dans chaque page, avant tout autre script.
+
+     Les pages Apps Script tournent dans une iframe de googleusercontent.com,
+     c'est-a-dire en contexte TIERS. Un navigateur qui bloque les cookies
+     tiers (reglage de Chrome ou d'Edge, protection contre le pistage
+     « stricte », navigation privee, profil d'entreprise...) interdit alors
+     localStorage, sessionStorage et IndexedDB : la simple LECTURE de
+     window.localStorage leve une SecurityError. C'etait la cause des pages
+     qui « plantaient selon le navigateur » : la connexion vendeur echouait
+     sans message (le jeton ne pouvait pas etre memorise), le panier ne se
+     gardait pas...
+
+     Ici : si le stockage est refuse, localStorage et sessionStorage sont
+     remplaces par une memoire de meme interface, valable le temps de la
+     page. Tout le reste du code continue de fonctionner a l'identique ; on
+     perd seulement la memorisation d'une visite a l'autre dans ces
+     navigateurs-la.
+     ================================================================== */
+  (function () {
+    function memoire() {
+      var d = {};
+      return {
+        getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(d, k) ? d[k] : null; },
+        setItem: function (k, v) { d[String(k)] = String(v); },
+        removeItem: function (k) { delete d[String(k)]; },
+        clear: function () { d = {}; },
+        key: function (i) { var c = Object.keys(d); return i < c.length ? c[i] : null; },
+        get length() { return Object.keys(d).length; }
+      };
+    }
+    window.STOCKAGE_NAVIGATEUR_BLOQUE = false;
+    ["localStorage", "sessionStorage"].forEach(function (nom) {
+      try {
+        var s = window[nom], essai = "__essai_stockage__";
+        s.setItem(essai, "1");
+        s.removeItem(essai);
+        return;
+      } catch (e) { /* refuse : remplace ci-dessous */ }
+      window.STOCKAGE_NAVIGATEUR_BLOQUE = true;
+      try { Object.defineProperty(window, nom, { value: memoire(), configurable: true, writable: true }); } catch (e2) { /* tres ancien navigateur : tant pis */ }
+    });
+  })();
+
+  /* Cache PERSISTANT pour les gros contenus (dessins d'uniforme...) :
+     IndexedDB, asynchrone, sans la limite de 5 Mo de localStorage. Si
+     IndexedDB est refuse, une simple memoire le temps de la page.
+       cacheNavigateur.lire(cle, function (valeur) {...})   (null si absent)
+       cacheNavigateur.ecrire(cle, valeur)                  (sans retour)  */
+  window.cacheNavigateur = (function () {
+    var memoire = {}, base = null, enAttente = [], echec = false;
+    function ouvrir(suite) {
+      if (base || echec) { suite(); return; }
+      enAttente.push(suite);
+      if (enAttente.length > 1) return;
+      function fin() { var l = enAttente; enAttente = []; l.forEach(function (f) { f(); }); }
+      try {
+        var req = window.indexedDB.open("boutique_gdb_cache", 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore("cles"); };
+        req.onsuccess = function () { base = req.result; fin(); };
+        req.onerror = req.onblocked = function () { echec = true; fin(); };
+      } catch (e) { echec = true; fin(); }
+    }
+    return {
+      lire: function (cle, rappel) {
+        if (Object.prototype.hasOwnProperty.call(memoire, cle)) { rappel(memoire[cle]); return; }
+        ouvrir(function () {
+          if (!base) { rappel(null); return; }
+          try {
+            var req = base.transaction("cles", "readonly").objectStore("cles").get(cle);
+            req.onsuccess = function () { var v = req.result === undefined ? null : req.result; if (v !== null) memoire[cle] = v; rappel(v); };
+            req.onerror = function () { rappel(null); };
+          } catch (e) { rappel(null); }
+        });
+      },
+      ecrire: function (cle, valeur) {
+        memoire[cle] = valeur;
+        ouvrir(function () {
+          if (!base) return;
+          try { base.transaction("cles", "readwrite").objectStore("cles").put(valeur, cle); } catch (e) { /* quota plein : la memoire suffit */ }
+        });
+      }
+    };
+  })();
+</script>
+
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script>
+    window.AVIS_BOOTSTRAP = __BOOTSTRAP_JSON__;
+  </script>
+  <style>
+    :root {
+      --blue: #000761;
+      --gold: #c8a24a;
+      --sand: #efe3c4;
+      --line: #d9dbea;
+      --muted: #676b8f;
+      --white: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--blue);
+      background: radial-gradient(circle at top right, rgba(239, 227, 196, .8), transparent 31rem), #f7f8ff;
+      font-family: Georgia, serif;
+    }
+    .avis-shell {
+      width: min(640px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 60px;
+    }
+    .avis-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 22px;
+      margin-bottom: 24px;
+      color: var(--white);
+      background: var(--blue);
+      border-radius: 14px;
+    }
+    .avis-header h1 { margin: 0; font-size: 20px; }
+    .avis-header p { margin: 2px 0 0; color: var(--sand); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .avis-card {
+      padding: 20px;
+      margin-bottom: 16px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 7, 97, .06);
+    }
+    .avis-item {
+      display: flex;
+      gap: 14px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .avis-item:last-child { border-bottom: none; }
+    .avis-item img {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--sand);
+    }
+    .avis-item-body { flex: 1; min-width: 0; }
+    .avis-item-body strong { display: block; color: var(--blue); font-size: 15px; }
+    .avis-item-body small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .avis-stars {
+      display: inline-flex;
+      flex-direction: row-reverse;
+      gap: 4px;
+      font-size: 24px;
+    }
+    .avis-stars input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .avis-stars label {
+      color: #d9dbea;
+      cursor: pointer;
+      transition: color .15s ease;
+    }
+    .avis-stars input:checked ~ label,
+    .avis-stars label:hover,
+    .avis-stars label:hover ~ label {
+      color: var(--gold);
+    }
+    .avis-item textarea {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      font: 13px Georgia, serif;
+      color: var(--blue);
+      resize: vertical;
+      min-height: 44px;
+    }
+    /* Bloc livraison : meme structure qu'un article, mais nettement detache —
+       il ne porte pas sur un produit mais sur la commande entiere. Couleurs
+       reprises des variables existantes, aucune teinte nouvelle. */
+    .avis-livraison {
+      margin-top: 6px;
+      padding-top: 18px;
+      border-top: 2px solid var(--line);
+    }
+    .avis-livraison .avis-item-body > strong { color: var(--blue); }
+    .avis-date-label {
+      display: block;
+      margin: 12px 0 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .avis-date-input {
+      width: 100%;
+      padding: 9px 11px;
+      color: var(--blue);
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-family: Georgia, serif;
+      font-size: 14px;
+    }
+    .avis-date-input:focus {
+      outline: none;
+      border-color: var(--gold);
+    }
+    .avis-duree {
+      margin: 7px 0 0;
+      min-height: 17px;
+      color: var(--gold);
+      font-size: 13px;
+      font-weight: bold;
+    }
+    .avis-existant {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #f0fdf4;
+      border: 1px solid #c8e6c9;
+      border-radius: 7px;
+      color: #2e7d32;
+      font-size: 13px;
+    }
+    .avis-submit {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 48px;
+      color: var(--white);
+      background: var(--blue);
+      border: none;
+      border-radius: 8px;
+      font: bold 15px Georgia, serif;
+      cursor: pointer;
+    }
+    .avis-submit:hover { background: #1323a6; }
+    .avis-submit:disabled { opacity: .55; cursor: not-allowed; }
+    .avis-message {
+      margin-top: 14px;
+      text-align: center;
+      font-weight: bold;
+      color: var(--blue);
+    }
+    .avis-invalid {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--muted);
+    }
+    .avis-invalid i { font-size: 32px; color: var(--gold); margin-bottom: 10px; display: block; }
+    .avis-thanks {
+      text-align: center;
+      padding: 30px 20px;
+    }
+    .avis-thanks i { font-size: 40px; color: #2e7d32; margin-bottom: 12px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="avis-shell">
+    <header class="avis-header">
+      <img src="https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w120" alt="" style="width:44px;height:44px;object-fit:contain;">
+      <div>
+        <p>Boutique GDB</p>
+        <h1>Votre avis compte</h1>
+      </div>
+    </header>
+
+    <div id="avis-content"></div>
+  </div>
+
+  <script>
+    var bootstrap = window.AVIS_BOOTSTRAP || { valide: false };
+
+    function escapeHtml(value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    function rendre() {
+      var host = document.getElementById("avis-content");
+      if (!bootstrap.valide) {
+        host.innerHTML = '<div class="avis-card avis-invalid"><i class="fa-solid fa-circle-exclamation"></i><p>Ce lien n\'est plus valide. Si vous pensez qu\'il s\'agit d\'une erreur, contactez boutique@fsggb.fr.</p></div>';
+        return;
+      }
+
+      var lignes = bootstrap.lignes || [];
+      var itemsHtml = lignes.map(function (ligne, index) {
+        if (ligne.avisExistant) {
+          return [
+            '<div class="avis-item">',
+            ligne.image ? '<img src="' + escapeHtml(ligne.image) + '" alt="">' : '',
+            '<div class="avis-item-body">',
+            '<strong>' + escapeHtml(ligne.nom) + '</strong>',
+            ligne.option ? '<small>' + escapeHtml(ligne.option) + '</small>' : '',
+            '<div class="avis-existant"><i class="fa-solid fa-circle-check"></i> Merci, vous avez déjà donné votre avis (' + '★'.repeat(ligne.avisExistant.note) + '☆'.repeat(5 - ligne.avisExistant.note) + ')</div>',
+            '</div>',
+            '</div>'
+          ].join("");
+        }
+        var stars = [5, 4, 3, 2, 1].map(function (n) {
+          return '<input type="radio" name="note-' + index + '" id="star-' + index + '-' + n + '" value="' + n + '"><label for="star-' + index + '-' + n + '"><i class="fa-solid fa-star"></i></label>';
+        }).join("");
+        return [
+          '<div class="avis-item" data-article-id="' + escapeHtml(ligne.id) + '" data-index="' + index + '">',
+          ligne.image ? '<img src="' + escapeHtml(ligne.image) + '" alt="">' : '',
+          '<div class="avis-item-body">',
+          '<strong>' + escapeHtml(ligne.nom) + '</strong>',
+          ligne.option ? '<small>' + escapeHtml(ligne.option) + '</small>' : '',
+          '<div class="avis-stars">' + stars + '</div>',
+          '<textarea placeholder="Un commentaire (facultatif)..." maxlength="500"></textarea>',
+          '</div>',
+          '</div>'
+        ].join("");
+      }).join("");
+
+      host.innerHTML = [
+        '<div class="avis-card">',
+        (bootstrap.prenom ? '<p style="margin:0 0 14px;">Bonjour ' + escapeHtml(bootstrap.prenom) + ', comment avez-vous trouvé vos articles ?</p>' : ''),
+        itemsHtml,
+        blocLivraison(),
+        '<button type="button" class="avis-submit" id="avis-submit-btn"><i class="fa-solid fa-paper-plane"></i> Envoyer mon avis</button>',
+        '<p class="avis-message" id="avis-message"></p>',
+        '</div>'
+      ].join("");
+
+      var bouton = document.getElementById("avis-submit-btn");
+      if (bouton) bouton.addEventListener("click", envoyerAvis);
+      brancherDureeLivraison();
+    }
+
+    // Avis sur la LIVRAISON, distinct des articles : il porte sur la commande
+    // entiere. On demande la DATE DE RÉCEPTION et non un nombre de jours — le
+    // client se souvient du jour où le colis est arrivé, beaucoup moins du
+    // temps que ça a pris. Le serveur calcule la durée à partir de la date de
+    // commande, qu'il connaît déjà.
+    function blocLivraison() {
+      if (bootstrap.avisLivraisonExistant) {
+        var deja = bootstrap.avisLivraisonExistant;
+        return [
+          '<div class="avis-item avis-livraison">',
+          '<div class="avis-item-body">',
+          '<strong><i class="fa-solid fa-truck-fast"></i> La livraison</strong>',
+          '<div class="avis-existant"><i class="fa-solid fa-circle-check"></i> Merci, vous avez déjà noté la livraison (',
+          '★'.repeat(deja.note) + '☆'.repeat(5 - deja.note),
+          deja.dureeJours !== "" && deja.dureeJours !== null ? ' · reçue en ' + escapeHtml(deja.dureeJours) + ' jour' + (deja.dureeJours > 1 ? 's' : '') : '',
+          ')</div>',
+          '</div>',
+          '</div>'
+        ].join("");
+      }
+
+      var stars = [5, 4, 3, 2, 1].map(function (n) {
+        return '<input type="radio" name="note-livraison" id="star-liv-' + n + '" value="' + n + '">'
+          + '<label for="star-liv-' + n + '"><i class="fa-solid fa-star"></i></label>';
+      }).join("");
+
+      return [
+        '<div class="avis-item avis-livraison" id="avis-livraison-bloc">',
+        '<div class="avis-item-body">',
+        '<strong><i class="fa-solid fa-truck-fast"></i> La livraison</strong>',
+        '<small>Rapidité, état du colis, emballage…</small>',
+        '<div class="avis-stars">' + stars + '</div>',
+        '<label class="avis-date-label" for="avis-date-reception">Quand avez-vous reçu votre commande&nbsp;?</label>',
+        '<input type="date" id="avis-date-reception" class="avis-date-input"',
+        bootstrap.dateCommandeIso ? ' min="' + escapeHtml(bootstrap.dateCommandeIso) + '"' : '',
+        bootstrap.aujourdHuiIso ? ' max="' + escapeHtml(bootstrap.aujourdHuiIso) + '"' : '',
+        '>',
+        '<p class="avis-duree" id="avis-duree"></p>',
+        '<textarea placeholder="Un commentaire sur la livraison (facultatif)..." maxlength="500"></textarea>',
+        '</div>',
+        '</div>'
+      ].join("");
+    }
+
+    // Retour immédiat sur le délai : le client voit le nombre de jours que sa
+    // saisie représente et peut se corriger s'il s'est trompé de date.
+    function brancherDureeLivraison() {
+      var champ = document.getElementById("avis-date-reception");
+      var affichage = document.getElementById("avis-duree");
+      if (!champ || !affichage || !bootstrap.dateCommandeIso) return;
+
+      champ.addEventListener("change", function () {
+        if (!champ.value) { affichage.textContent = ""; return; }
+        var depart = new Date(bootstrap.dateCommandeIso + "T00:00:00");
+        var arrivee = new Date(champ.value + "T00:00:00");
+        var jours = Math.round((arrivee - depart) / 86400000);
+        if (isNaN(jours) || jours < 0) { affichage.textContent = ""; return; }
+        affichage.textContent = jours === 0
+          ? "Reçue le jour même de la commande."
+          : "Reçue en " + jours + " jour" + (jours > 1 ? "s" : "") + " après la commande.";
+      });
+    }
+
+    function lireAvisLivraison() {
+      var bloc = document.getElementById("avis-livraison-bloc");
+      if (!bloc) return null;
+      var checked = bloc.querySelector('input[name="note-livraison"]:checked');
+      if (!checked) return null; // la note est obligatoire, la date ne l'est pas
+      var champDate = document.getElementById("avis-date-reception");
+      return {
+        note: Number(checked.value),
+        dateReception: (champDate && champDate.value) || "",
+        commentaire: (bloc.querySelector("textarea") || {}).value || ""
+      };
+    }
+
+    function envoyerAvis() {
+      var items = document.querySelectorAll(".avis-item[data-article-id]");
+      var avisParArticle = [];
+      items.forEach(function (item) {
+        var index = item.getAttribute("data-index");
+        var checked = item.querySelector('input[name="note-' + index + '"]:checked');
+        if (!checked) return;
+        avisParArticle.push({
+          id: item.getAttribute("data-article-id"),
+          note: Number(checked.value),
+          commentaire: (item.querySelector("textarea") || {}).value || ""
+        });
+      });
+
+      var avisLivraison = lireAvisLivraison();
+
+      if (!avisParArticle.length && !avisLivraison) {
+        document.getElementById("avis-message").textContent = "Choisissez au moins une note pour continuer.";
+        return;
+      }
+
+      var bouton = document.getElementById("avis-submit-btn");
+      bouton.disabled = true;
+      bouton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Envoi…';
+
+      google.script.run
+        .withSuccessHandler(function (resultat) {
+          if (resultat && resultat.success) {
+            document.getElementById("avis-content").innerHTML = '<div class="avis-card avis-thanks"><i class="fa-solid fa-heart"></i><h2>Merci pour votre avis !</h2><p>Il aide toute la fédération à mieux choisir ses articles.</p></div>';
+          } else {
+            document.getElementById("avis-message").textContent = (resultat && resultat.error) || "Une erreur s'est produite.";
+            bouton.disabled = false;
+            bouton.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Envoyer mon avis';
+          }
+        })
+        .withFailureHandler(function (error) {
+          document.getElementById("avis-message").textContent = (error && error.message) || "Une erreur s'est produite.";
+          bouton.disabled = false;
+          bouton.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Envoyer mon avis';
+        })
+        .soumettreAvis(bootstrap.reference, bootstrap.token, avisParArticle, avisLivraison);
+    }
+
+    rendre();
+  </script>
+</body>
+</html>

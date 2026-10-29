@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!--
+  PAGE D'AIDE DE LA BOUTIQUE — publiee a cote du chargeur (depot GitHub
+  JavaBatchCSS/boutique-gdb, fichier aide.html) et integree par son adresse
+  dans la page « aide » du Google Site.
+
+  Elle DOIT etre servie a la meme adresse que le chargeur : un navigateur ne
+  laisse une page effacer que les donnees de sa propre adresse. Integree dans
+  le Google Site, elle efface donc les donnees de la boutique integree dans le
+  site ; ouverte seule, celles de la boutique ouverte seule.
+  Elle ne peut PAS effacer les cookies de connexion Google (ranges sous
+  google.com) : aucune page web ne le peut.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aide — Boutique GDB</title>
+<style>
+  :root { --bleu: #0b1a6b; --or: #c8a24a; --fond: #f6f4ee; --texte: #1d2340; --rouge: #a3261b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.55 Georgia, serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { color: var(--bleu); font-size: 1.7rem; margin: 0 0 4px; }
+  h2 { color: var(--bleu); font-size: 1.2rem; margin: 0 0 8px; }
+  .sous-titre { margin: 0 0 24px; color: #4a5070; }
+  section { background: #fff; border-top: 4px solid var(--or); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  ul { padding-left: 1.2em; margin: 8px 0; }
+  .avertissement { background: #fff6e6; border-left: 4px solid var(--or); padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
+  label { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; cursor: pointer; }
+  input[type=checkbox] { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+  button { font: inherit; font-weight: bold; border: 0; border-radius: 8px; padding: 12px 18px; min-height: 44px; cursor: pointer; background: var(--rouge); color: #fff; }
+  button:disabled { background: #b9b9c4; cursor: not-allowed; }
+  .resultat { margin-top: 14px; font-weight: bold; }
+  .resultat.ok { color: #1f6b2e; }
+  .resultat.erreur { color: var(--rouge); }
+  a { color: var(--bleu); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Aide — Boutique GDB</h1>
+  <p class="sous-titre">La boutique ne s'affiche pas correctement ? Voici quoi faire.</p>
+
+  <section>
+    <h2>1. La boutique est bloquée, vide ou ancienne</h2>
+    <p>Votre navigateur garde quelques informations de la boutique pour l'afficher plus vite et se souvenir de vous.
+       Si elles sont abîmées, la boutique peut rester bloquée sur « Chargement », afficher une ancienne version
+       ou refuser votre connexion. Les effacer remet la boutique à neuf <strong>sur cet appareil et ce navigateur seulement</strong>.</p>
+    <div class="avertissement">
+      <strong>Ce que l'effacement va faire :</strong>
+      <ul>
+        <li>votre <strong>panier sera vidé</strong> (une commande déjà envoyée n'est pas touchée) ;</li>
+        <li>vous serez <strong>déconnecté</strong> de votre compte client, de la console vendeur et de l'administration :
+            il faudra vous reconnecter (lien par e-mail, mot de passe vendeur, code administrateur) ;</li>
+        <li>vos <strong>filtres et préférences</strong> d'affichage reviendront aux réglages de départ ;</li>
+        <li>le <strong>prochain chargement sera plus lent</strong> (quelques secondes), le temps de tout récupérer.</li>
+      </ul>
+      Rien n'est effacé sur le serveur : vos commandes, avis et informations enregistrées restent intacts.
+    </div>
+    <label><input type="checkbox" id="compris"> J'ai compris : mon panier sera vidé et je devrai me reconnecter.</label>
+    <button type="button" id="effacer" disabled>Réinitialiser la boutique sur cet appareil</button>
+    <p class="resultat" id="resultat" role="status" aria-live="polite"></p>
+  </section>
+
+  <section>
+    <h2>2. Une page Google « Impossible d'ouvrir le fichier pour le moment »</h2>
+    <p>Elle vient de Google, pas de la boutique : elle apparaît quand on ouvre l'<strong>ancienne adresse</strong>
+       de la boutique (lien ou QR code commençant par <em>script.google.com</em>) avec certains comptes Google connectés
+       dans le navigateur (plusieurs comptes, compte d'école ou d'une autre organisation…).
+       Le bouton ci-dessus ne peut rien y faire : aucun site ne peut toucher aux connexions Google.</p>
+    <ul>
+      <li>Passez par l'adresse de la boutique : <a href="https://boutique.fsggb.fr/" target="_top">boutique.fsggb.fr</a> — elle fonctionne quel que soit votre compte Google ;</li>
+      <li>ou ouvrez l'ancien lien dans une <strong>fenêtre de navigation privée</strong> (Ctrl+Maj+N sur Chrome et Edge, Ctrl+Maj+P sur Firefox) ;</li>
+      <li>ou déconnectez-vous des autres comptes Google sur <a href="https://accounts.google.com/" target="_blank" rel="noopener">accounts.google.com</a>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. Toujours un problème ?</h2>
+    <p>Écrivez à <a href="mailto:boutique@fsggb.fr">boutique@fsggb.fr</a> en indiquant votre navigateur
+       (Chrome, Edge, Firefox, Safari…), votre appareil et ce qui s'affiche — une capture d'écran aide beaucoup.</p>
+  </section>
+</main>
+<script>
+  (function () {
+    var case_ = document.getElementById("compris");
+    var bouton = document.getElementById("effacer");
+    var resultat = document.getElementById("resultat");
+    case_.addEventListener("change", function () { bouton.disabled = !case_.checked; });
+
+    // Bases IndexedDB connues (SCRIPT_Stockage.html) si le navigateur ne sait
+    // pas les lister lui-meme (indexedDB.databases absent).
+    var BASES_CONNUES = ["boutique_gdb_cache"];
+
+    function effacerBases() {
+      if (!window.indexedDB) return Promise.resolve();
+      var liste = indexedDB.databases
+        ? indexedDB.databases().then(function (bases) { return bases.map(function (b) { return b.name; }); }, function () { return BASES_CONNUES; })
+        : Promise.resolve(BASES_CONNUES);
+      return liste.then(function (noms) {
+        return Promise.all(noms.filter(Boolean).map(function (nom) {
+          return new Promise(function (fin) {
+            var req = indexedDB.deleteDatabase(nom);
+            req.onsuccess = req.onerror = req.onblocked = function () { fin(); };
+          });
+        }));
+      });
+    }
+
+    function effacerCaches() {
+      if (!window.caches || !caches.keys) return Promise.resolve();
+      return caches.keys().then(function (cles) { return Promise.all(cles.map(function (c) { return caches.delete(c); })); });
+    }
+
+    bouton.addEventListener("click", function () {
+      if (!case_.checked) return;
+      bouton.disabled = true;
+      resultat.className = "resultat";
+      resultat.textContent = "Effacement en cours…";
+      var erreurs = [];
+      try { localStorage.clear(); } catch (e) { erreurs.push("stockage local"); }
+      try { sessionStorage.clear(); } catch (e) { erreurs.push("stockage de session"); }
+      Promise.all([
+        effacerBases().catch(function () { erreurs.push("base de données"); }),
+        effacerCaches().catch(function () { erreurs.push("cache"); })
+      ]).then(function () {
+        case_.checked = false;
+        if (erreurs.length) {
+          resultat.className = "resultat erreur";
+          resultat.textContent = "Effacement partiel (" + erreurs.join(", ") + " inaccessible). Essayez de fermer les autres onglets de la boutique puis recommencez.";
+        } else {
+          resultat.className = "resultat ok";
+          resultat.textContent = "C'est fait. Fermez les autres onglets de la boutique, puis rouvrez-la : elle se rechargera à neuf.";
+        }
+      });
+    });
+  })();
+</script>
+</body>
+</html>

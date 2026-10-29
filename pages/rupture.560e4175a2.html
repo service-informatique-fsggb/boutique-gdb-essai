@@ -1,0 +1,2465 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><script>
+  // Boutique ouverte par le chargeur anonyme (voir BACK_AppelsAnonymes.js) :
+  // la page n'est PAS servie par HtmlService, google.script.run n'existe donc
+  // pas. Ce remplacant offre la meme interface (withSuccessHandler,
+  // withFailureHandler, withUserObject, puis nomDeFonction(args...)) et envoie
+  // chaque appel a doPost SANS cookie : aucun compte Google n'intervient.
+  // Insere par le serveur en tete de page, avant tout autre script.
+  (function () {
+    if (typeof google !== "undefined" && google.script && google.script.run) return;
+    var URL_EXEC = "https://script.google.com/macros/s/AKfycbwW5GeOkiFxzGFXulOqIjNqGaZEMEk8QnHiHujMLhS59MN09ECAXTZITMmCuFcn3aLD/exec";
+
+    function appeler(nom, args, etat) {
+      var succes = etat.withSuccessHandler;
+      var echec = etat.withFailureHandler || function (err) { if (window.console) console.error(err); };
+      var objet = etat.withUserObject;
+      fetch(URL_EXEC, {
+        method: "POST",
+        credentials: "omit",
+        // text/plain : requete « simple », sans verification prealable (CORS)
+        // qu'Apps Script ne sait pas traiter.
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ __appelBoutique: nom, args: Array.prototype.slice.call(args) })
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error("Le serveur de la boutique ne répond pas (" + r.status + ").");
+          return r.json();
+        })
+        .then(function (reponse) {
+          if (reponse && reponse.ok) { if (succes) succes(reponse.valeur, objet); }
+          else echec(new Error(reponse && reponse.erreur || "Erreur inconnue du serveur."), objet);
+        }, function (err) {
+          echec(err instanceof Error ? err : new Error(String(err)), objet);
+        });
+    }
+
+    function relais(etat) {
+      return new Proxy({}, {
+        get: function (_, nom) {
+          if (nom === "withSuccessHandler" || nom === "withFailureHandler" || nom === "withUserObject") {
+            return function (valeur) {
+              var copie = {};
+              Object.keys(etat).forEach(function (k) { copie[k] = etat[k]; });
+              copie[nom] = valeur;
+              return relais(copie);
+            };
+          }
+          if (typeof nom !== "string") return undefined;
+          return function () { appeler(nom, arguments, etat); };
+        }
+      });
+    }
+
+    window.google = window.google || {};
+    window.google.script = window.google.script || {};
+    window.google.script.run = relais({});
+  })();
+</script>
+
+  <script>
+  /* ===================== Stockage du navigateur =====================
+     Inclus EN PREMIER dans chaque page, avant tout autre script.
+
+     Les pages Apps Script tournent dans une iframe de googleusercontent.com,
+     c'est-a-dire en contexte TIERS. Un navigateur qui bloque les cookies
+     tiers (reglage de Chrome ou d'Edge, protection contre le pistage
+     « stricte », navigation privee, profil d'entreprise...) interdit alors
+     localStorage, sessionStorage et IndexedDB : la simple LECTURE de
+     window.localStorage leve une SecurityError. C'etait la cause des pages
+     qui « plantaient selon le navigateur » : la connexion vendeur echouait
+     sans message (le jeton ne pouvait pas etre memorise), le panier ne se
+     gardait pas...
+
+     Ici : si le stockage est refuse, localStorage et sessionStorage sont
+     remplaces par une memoire de meme interface, valable le temps de la
+     page. Tout le reste du code continue de fonctionner a l'identique ; on
+     perd seulement la memorisation d'une visite a l'autre dans ces
+     navigateurs-la.
+     ================================================================== */
+  (function () {
+    function memoire() {
+      var d = {};
+      return {
+        getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(d, k) ? d[k] : null; },
+        setItem: function (k, v) { d[String(k)] = String(v); },
+        removeItem: function (k) { delete d[String(k)]; },
+        clear: function () { d = {}; },
+        key: function (i) { var c = Object.keys(d); return i < c.length ? c[i] : null; },
+        get length() { return Object.keys(d).length; }
+      };
+    }
+    window.STOCKAGE_NAVIGATEUR_BLOQUE = false;
+    ["localStorage", "sessionStorage"].forEach(function (nom) {
+      try {
+        var s = window[nom], essai = "__essai_stockage__";
+        s.setItem(essai, "1");
+        s.removeItem(essai);
+        return;
+      } catch (e) { /* refuse : remplace ci-dessous */ }
+      window.STOCKAGE_NAVIGATEUR_BLOQUE = true;
+      try { Object.defineProperty(window, nom, { value: memoire(), configurable: true, writable: true }); } catch (e2) { /* tres ancien navigateur : tant pis */ }
+    });
+  })();
+
+  /* Cache PERSISTANT pour les gros contenus (dessins d'uniforme...) :
+     IndexedDB, asynchrone, sans la limite de 5 Mo de localStorage. Si
+     IndexedDB est refuse, une simple memoire le temps de la page.
+       cacheNavigateur.lire(cle, function (valeur) {...})   (null si absent)
+       cacheNavigateur.ecrire(cle, valeur)                  (sans retour)  */
+  window.cacheNavigateur = (function () {
+    var memoire = {}, base = null, enAttente = [], echec = false;
+    function ouvrir(suite) {
+      if (base || echec) { suite(); return; }
+      enAttente.push(suite);
+      if (enAttente.length > 1) return;
+      function fin() { var l = enAttente; enAttente = []; l.forEach(function (f) { f(); }); }
+      try {
+        var req = window.indexedDB.open("boutique_gdb_cache", 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore("cles"); };
+        req.onsuccess = function () { base = req.result; fin(); };
+        req.onerror = req.onblocked = function () { echec = true; fin(); };
+      } catch (e) { echec = true; fin(); }
+    }
+    return {
+      lire: function (cle, rappel) {
+        if (Object.prototype.hasOwnProperty.call(memoire, cle)) { rappel(memoire[cle]); return; }
+        ouvrir(function () {
+          if (!base) { rappel(null); return; }
+          try {
+            var req = base.transaction("cles", "readonly").objectStore("cles").get(cle);
+            req.onsuccess = function () { var v = req.result === undefined ? null : req.result; if (v !== null) memoire[cle] = v; rappel(v); };
+            req.onerror = function () { rappel(null); };
+          } catch (e) { rappel(null); }
+        });
+      },
+      ecrire: function (cle, valeur) {
+        memoire[cle] = valeur;
+        ouvrir(function () {
+          if (!base) return;
+          try { base.transaction("cles", "readwrite").objectStore("cles").put(valeur, cle); } catch (e) { /* quota plein : la memoire suffit */ }
+        });
+      }
+    };
+  })();
+</script>
+
+  <base target="_top">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <style>
+  /* ============================================
+     THÈME COMMUN - Boutique GDB
+     Appliqué à toutes les pages (Admin, Vendeur, Boutique)
+     ============================================ */
+  
+  :root {
+    /* Couleurs principales */
+    --theme-blue: #000761;
+    --theme-ink: #15162b;
+    --theme-muted: #676b8f;
+    --theme-white: #ffffff;
+    --theme-black: #000000;
+    --theme-line: #d9dbea;
+    --theme-soft: #bfc1d8;
+    --theme-sand: #efe3c4;
+    --theme-gold: #c8a24a;
+    --theme-surface: #f5f6fb;
+    --theme-success: #2e7d32;
+    --theme-danger: #9a2530;
+    /* Tons derives, deja utilises partout en HEX EN DUR avant ce correctif
+       (verifie par audit : #7a1020 x7, #eef1f9 x6, #fdecea x6, #fffaf0 x6,
+       #f7f8ff x13 rien que dans CSS_vendeur.html) — nommes ici pour que
+       toute future retouche de palette n'ait plus qu'un seul endroit a
+       changer, au lieu de dizaines de valeurs eparpillees. */
+    --theme-danger-dark: #7a1020;   /* survol des boutons "danger" */
+    --theme-danger-bg: #fdecea;     /* fond des encarts d'alerte/erreur */
+    --theme-hover-bg: #eef1f9;      /* survol generique (deja utilise tel quel sur button:hover) */
+    --theme-warning-bg: #fffaf0;    /* fond des encarts d'avertissement/favori */
+    --theme-surface-alt: #f7f8ff;   /* variante tres claire de --theme-surface */
+
+    /* Echelle de rayons de bordure — jusqu'ici implicite (8px/10px/13px/16px/
+       999px utilises directement en dur, cote a cote avec des variantes
+       6px/7px non intentionnelles sur des controles similaires). Nommee ici
+       pour que tout nouveau composant s'y reference au lieu de re-choisir un
+       chiffre au hasard. */
+    --radius-field: 8px;   /* champs de saisie, petits boutons carres */
+    --radius-compact: 10px; /* cartes compactes, badges rectangulaires */
+    --radius-card: 13px;   /* cartes/panneaux principaux */
+    --radius-panel: 16px;  /* bandeaux/en-tetes pleine largeur */
+    --radius-pill: 999px;  /* boutons/onglets en pilule */
+
+    /* Echelle d'ombres — 2 niveaux officiels utilises partout, nommes ici
+       plutot que recopies en dur (le flou/l'opacite derivaient legerement
+       d'un endroit a l'autre, ex: 0.06 a 0.14 pour le meme "niveau" de carte). */
+    --shadow-card: 0 10px 25px rgba(0, 7, 97, 0.06);
+    --shadow-panel: 0 16px 34px rgba(0, 7, 97, 0.18);
+    /* Hauteur reelle du bandeau d'en-tete (position:fixed, donc retire du
+       flux normal) : sert a compenser exactement cette hauteur partout ou du
+       contenu pourrait sinon commencer sous le bandeau (logo 48px + 14px de
+       padding haut/bas + marge de securite). */
+    --theme-header-height: 84px;
+    
+    /* Aliases pour compatibilité */
+    --admin-blue: var(--theme-blue);
+    --admin-ink: var(--theme-ink);
+    --admin-muted: var(--theme-muted);
+    --admin-white: var(--theme-white);
+    --admin-line: var(--theme-line);
+    --admin-soft: var(--theme-soft);
+    --admin-sand: var(--theme-sand);
+    --admin-gold: var(--theme-gold);
+    --admin-surface: var(--theme-surface);
+    --seller-blue: var(--theme-blue);
+    --seller-ink: var(--theme-ink);
+    --seller-muted: var(--theme-muted);
+    --seller-white: var(--theme-white);
+    --seller-soft: var(--theme-soft);
+    --seller-sand: var(--theme-sand);
+    --seller-gold: var(--theme-gold);
+    --seller-bg: var(--theme-surface);
+    --seller-border: var(--theme-line);
+    --shop-blue: var(--theme-blue);
+    --shop-ink: var(--theme-ink);
+    --shop-muted: var(--theme-muted);
+    --shop-white: var(--theme-white);
+    --shop-soft: var(--theme-soft);
+    --shop-sand: var(--theme-sand);
+    --shop-gold: var(--theme-gold);
+    --shop-surface: var(--theme-surface);
+  }
+
+  /* L'attribut hidden doit TOUJOURS masquer, quelle que soit la regle
+     "display" posee par une classe. Sans ce garde-fou global, chaque
+     composant qui fixe un display (flex, grid, inline-flex...) ecrasait le
+     display:none implicite de hidden (regle auteur > feuille du navigateur),
+     et il fallait penser a ajouter ":not([hidden])" au cas par cas — oubli
+     constate a de multiples reprises (bouton "+" encore visible a cote du
+     formulaire qu'il venait d'ouvrir, bandeaux, fenetres...). Meme regle que
+     le "reboot" de Bootstrap. */
+  [hidden] {
+    display: none !important;
+  }
+
+  /* ============================================
+     BOUTON DE BASE (commun aux 3 interfaces)
+     ============================================
+     Apparence par defaut d'un <button> SANS classe dediee : sobre, compacte
+     (coins legerement arrondis, bordure fine, aucun saut ni ombre au survol).
+     La forme "pilule" est reservee aux vrais onglets de navigation
+     (.seller-tab, .department-tab), qui la definissent eux-memes.
+
+     :where() ramene la specificite de ces regles a ZERO : n'importe quelle
+     classe (.seller-confirm-button, .product-thumbnail, .shop-nav-bouton...)
+     l'emporte TOUJOURS, sur chaque propriete qu'elle fixe. L'ancienne
+     version "button:not([hidden])" pesait (0,1,1) — plus lourd qu'une classe
+     seule (0,1,0) : elle imposait hauteur 42px, padding, bordure 2px et forme
+     pilule a des composants qui definissaient pourtant les leurs. C'etait la
+     cause des vignettes de variantes ovales, des boutons de navigation
+     enormes et des textes qui debordaient de leur bouton. */
+  :where(button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 14px;
+    color: var(--theme-blue);
+    background: var(--theme-white);
+    border: 1px solid var(--theme-soft);
+    border-radius: var(--radius-field);
+    /* Les elements de formulaire ont leur PROPRE police systeme par defaut :
+       sans ce inherit explicite, tout bouton sans police fixee retombe dans
+       la police systeme au lieu du Georgia utilise partout ailleurs. */
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  :where(button:not(:disabled):hover) {
+    background: var(--theme-hover-bg);
+    border-color: var(--theme-gold);
+  }
+
+  :where(button:focus-visible) {
+    outline: 2px solid var(--theme-gold);
+    outline-offset: 2px;
+  }
+
+  /* Les boutons PLEINS (texte blanc sur fond bleu) reassertent leur survol :
+     leur base (0,1,0) est battue par button:hover (0,1,1), donc sans ceci ils
+     heriteraient du fond clair generique en gardant leur texte blanc. */
+  .seller-confirm-button:hover,
+  .seller-variant-save:hover,
+  .checkout-pay-button:hover,
+  .checkout-next-button:hover {
+    color: var(--theme-white);
+    background: var(--theme-ink);
+    border-color: var(--theme-ink);
+  }
+
+  .seller-danger-button:hover {
+    color: var(--theme-white);
+    background: var(--theme-danger-dark);
+    border-color: var(--theme-danger-dark);
+  }
+
+  /* Celui-ci est pose SUR le bandeau bleu (fond translucide) : un simple
+     eclaircissement du voile suffit, le texte reste blanc sur bleu. */
+  .seller-back-button:hover {
+    color: var(--theme-white);
+    background: rgba(255, 255, 255, 0.22);
+    border-color: var(--theme-gold);
+  }
+
+  /* Volontairement PAS dans :where() : un bouton desactive doit rester
+     reconnaissable meme quand sa classe fixe ses propres couleurs. */
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* ============================================
+     EN-TÊTE / HEADER
+     ============================================ */
+
+  .shop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px;
+    color: var(--theme-white);
+    background: var(--theme-blue);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-panel);
+    margin-bottom: 20px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1001;
+  }
+
+  .shop-header .brand-block {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    border-radius: var(--radius-field);
+  }
+
+  .shop-header .brand-block:hover,
+  .shop-header .brand-block:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    outline: none;
+  }
+
+  .app-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: var(--radius-field);
+  }
+
+  .shop-kicker {
+    color: var(--theme-sand);
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin: 0 0 3px;
+  }
+
+  .shop-header h1 {
+    margin: 0;
+    color: var(--theme-white);
+    font-size: 24px;
+    font-weight: normal;
+  }
+
+  .shop-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .header-action-label {
+    margin-left: 6px;
+    font-size: 13px;
+  }
+
+  .shop-header-actions button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 0 14px;
+    color: var(--theme-white);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: var(--radius-field);
+    font: bold 14px Georgia, serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .shop-header-actions button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--theme-gold);
+  }
+
+  .shop-header-actions button #cart-count {
+    background: var(--theme-gold);
+    color: var(--theme-blue);
+    border-radius: var(--radius-pill);
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-left: 4px;
+  }
+
+  /* ============================================
+     BASE COMMUNE
+     ============================================ */
+  
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    color: var(--theme-ink);
+    background: radial-gradient(circle at top right, rgba(239, 227, 196, 0.8), transparent 31rem), var(--theme-surface);
+    font-family: Georgia, serif;
+    /* Chiffres "alignes" (tous de la hauteur des majuscules) plutot que les
+       chiffres elzeviriens par defaut de Georgia, ou "11" parait deux fois
+       plus petit que "35" : prix, stocks et montants deviennent reguliers.
+       Sans effet si la police ne propose pas cette variante. */
+    font-variant-numeric: lining-nums;
+  }
+
+  /* Les champs ne l'heritent pas du body (police propre aux formulaires). */
+  input,
+  select,
+  textarea,
+  button {
+    font-variant-numeric: lining-nums;
+  }
+
+  .shop-layout {
+    width: min(1480px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 0 0 40px;
+  }
+
+  /* ============================================
+     EFFETS ET UTILITAIRES
+     ============================================ */
+  
+  .is-hidden {
+    display: none !important;
+  }
+
+  /* Règle globale .is-open supprimée — chaque composant définit
+     son propre .is-open avec le display adapté (flex, block, etc.)
+     dans CSS_boutique_refonte.html et les CSS spécifiques. */
+
+  /* ============================================
+     TYPOGRAPHIE
+     ============================================ */
+  
+  h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    color: var(--theme-blue);
+    font-family: Georgia, serif;
+    font-weight: normal;
+  }
+
+  p {
+    margin: 0;
+    color: var(--theme-ink);
+    font-family: Georgia, serif;
+  }
+
+  strong, b {
+    color: var(--theme-blue);
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--theme-muted);
+    font-size: 85%;
+  }
+
+  .kicker, .shop-kicker, .seller-kicker, .admin-access-brand p {
+    color: var(--theme-muted);
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin: 0 0 3px;
+  }
+
+  /* ============================================
+     BOUTONS
+     ============================================ */
+  
+  /* IMPORTANT — ne PAS remettre button[type="button"] ici.
+     Un selecteur d'attribut (0,1,1) l'emporte sur une classe de composant
+     (0,1,0) quel que soit l'ordre de chargement des fichiers : tant que
+     button[type="button"] imposait ce fond bleu plein, TOUS les onglets
+     (.department-tab, .seller-tab, .admin-tabs button, .account-tab...)
+     etaient repeints en bleu fonce et ne pouvaient pas adopter le style
+     pilule voulu, quoi qu'on ecrive dans leur propre classe.
+     Les boutons "type=button" heritent donc desormais de la regle `button`
+     de base (style pilule, plus haut dans ce fichier), et chaque composant
+     reste libre de la surcharger via sa classe.
+     Seuls les envois de formulaire restent en bouton principal plein —
+     dans :where() eux aussi, pour qu'une classe dediee garde la main. */
+  :where(button[type="submit"], input[type="submit"]) {
+    color: var(--theme-white);
+    background: var(--theme-blue);
+    border-color: var(--theme-blue);
+  }
+
+  :where(button[type="submit"]:not(:disabled):hover, input[type="submit"]:hover) {
+    color: var(--theme-white);
+    background: var(--theme-ink);
+    border-color: var(--theme-ink);
+  }
+
+  .button-secondary {
+    color: var(--theme-blue);
+    background: var(--theme-white);
+    border-color: var(--theme-line);
+  }
+
+  .button-gold {
+    color: var(--theme-blue);
+    background: var(--theme-gold);
+    border-color: var(--theme-gold);
+  }
+
+  .button-danger {
+    color: var(--theme-white);
+    background: var(--theme-danger);
+    border-color: var(--theme-danger);
+  }
+
+  /* (Ancienne regle "button[type=button] i { margin-right: 8px }" supprimee :
+     elle s'ajoutait au "gap" du bouton flex — espace double entre icone et
+     texte — et decentrait l'icone de tous les boutons a icone seule.) */
+
+  /* ============================================
+     CARTES ET PANELS
+     ============================================ */
+  
+  .card, .panel, .shop-full-window-card, .seller-panel, .seller-dialog, .admin-panel, .admin-access-card {
+    border: 1px solid var(--theme-line);
+    border-radius: var(--radius-card);
+    background: var(--theme-white);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+
+  .card-header, .panel-header, .shop-full-window-header, .seller-panel-header, .seller-dialog-header, .admin-panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 17px 18px;
+    border-bottom: 1px solid var(--theme-line);
+  }
+
+  .card-header h2,
+  .panel-header h2,
+  .shop-full-window-header h2,
+  .seller-panel-header h2,
+  .seller-dialog-header h2,
+  .admin-panel-heading h2 {
+    margin: 0;
+    color: var(--theme-blue);
+    font-size: 18px;
+  }
+
+  /* ============================================
+     BARRES DE NAVIGATION / ONGLETS
+     ============================================ */
+  
+  .topbar, .seller-topbar, .admin-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 18px 22px;
+    color: var(--theme-white);
+    background: var(--theme-blue);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .tabs, .seller-tabs, .admin-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    margin: 20px 0;
+    padding: 8px;
+    border: 1px solid var(--theme-line);
+    border-radius: 12px;
+    background: var(--theme-white);
+  }
+
+  .tabs button,
+  .seller-tabs button,
+  /* Meme pilule que .seller-tab / .department-tab : une seule et meme
+     apparence d'onglet sur les trois interfaces. */
+  .admin-tabs button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 0 16px;
+    color: var(--theme-muted);
+    background: var(--theme-white);
+    border: 2px solid var(--theme-soft);
+    border-radius: var(--radius-pill);
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .admin-tabs button.is-active {
+    color: var(--theme-blue);
+    background: var(--theme-sand);
+    border-color: var(--theme-gold);
+    box-shadow: 0 4px 12px rgba(200, 162, 74, 0.25);
+    transform: translateY(-1px);
+  }
+
+  .tabs button:hover,
+  .seller-tabs button:hover,
+  .admin-tabs button:hover {
+    color: var(--theme-blue);
+    background: var(--theme-sand);
+    border-color: var(--theme-gold);
+  }
+
+  .tabs button.is-active,
+  .seller-tabs button.is-active,
+  .admin-tabs button.is-active {
+    color: var(--theme-blue);
+    background: var(--theme-sand);
+    border-color: var(--theme-gold);
+  }
+
+  .tab-panel, .seller-tab-panel, .admin-tab-panel {
+    display: none;
+  }
+
+  .tab-panel.is-active,
+  .seller-tab-panel.is-active,
+  .admin-tab-panel.is-active {
+    display: block;
+  }
+
+  /* ============================================
+     CHAMPS DE FORMULAIRE
+     ============================================ */
+  
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  input[type="url"],
+  input[type="search"],
+  input[type="date"],
+  select,
+  textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: 11px 13px;
+    color: var(--theme-blue);
+    background: var(--theme-white);
+    border: 1px solid var(--theme-soft);
+    border-radius: var(--radius-field);
+    /* Proprietes detaillees et non le raccourci "font:", qui remettait les
+       chiffres elzeviriens (il reinitialise aussi font-variant-numeric). */
+    font-family: Georgia, serif;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: normal;
+    line-height: normal;
+    font-variant-numeric: lining-nums;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--theme-gold);
+    box-shadow: 0 0 0 3px rgba(200, 162, 74, 0.1);
+  }
+
+  /* ============================================
+     LIENS
+     ============================================ */
+  
+  a {
+    color: var(--theme-blue);
+    text-decoration: none;
+    font-family: Georgia, serif;
+  }
+
+  a:hover {
+    color: var(--theme-gold);
+  }
+
+  /* ============================================
+     ICÔNES FONT AWESOME
+     ============================================ */
+  
+  i.fa-solid,
+  i.fa-regular {
+    color: inherit;
+  }
+
+  /* ============================================
+     OVERLAYS
+     ============================================ */
+  
+  .overlay, .shop-overlay, .seller-modal, .admin-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .overlay.is-visible,
+  .shop-overlay.is-visible {
+    display: block;
+  }
+
+  .overlay:not(.is-visible),
+  .shop-overlay:not(.is-visible) {
+    display: none;
+  }
+
+  /* ============================================
+     LOADERS
+     ============================================ */
+  
+  .loader, .admin-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 7, 97, 0.85);
+  }
+
+  .loader.is-open,
+  .admin-loader.is-visible {
+    display: flex;
+  }
+
+  .loader-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid rgba(255, 255, 255, 0.25);
+    border-top-color: var(--theme-gold);
+    border-radius: 50%;
+    animation: spin 1s infinite linear;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ============================================
+     HELLO ASSO BUTTON STYLES
+     ============================================ */
+
+  .HaPay {
+    width: fit-content;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto;
+  }
+
+  .HaPay * {
+    font-family: "Open Sans", "Trebuchet MS", "Lucida Sans Unicode",
+      "Lucida Grande", "Lucida Sans", Arial, sans-serif;
+    transition: all 0.3s ease-out;
+  }
+
+  .HaPayButton {
+    align-items: stretch;
+    background: none;
+    border: none;
+    display: flex;
+    padding: 0;
+    border-radius: var(--radius-field);
+    cursor: pointer;
+  }
+
+  .HaPayButton:hover {
+    cursor: pointer;
+  }
+
+  .HaPayButton:not(:disabled):focus {
+    box-shadow: 0 0 0 0.25rem rgba(255, 255, 255, 0.25);
+  }
+
+  .HaPayButton:not(:disabled):hover .HaPayButtonLogo,
+  .HaPayButton:not(:disabled):focus .HaPayButtonLogo {
+    background-color: #483dbe;
+  }
+
+  .HaPayButton:disabled {
+    cursor: not-allowed;
+  }
+
+  .HaPayButtonLogo {
+    background-color: #4c40cf;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+    padding: 10px 16px;
+    width: 30px;
+  }
+
+  .HaPayButtonLabel {
+    align-items: center;
+    justify-content: space-between;
+    column-gap: 5px;
+    background-color: #ffffff;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    color: #4c40cf;
+    font-size: 16px;
+    font-weight: 800;
+    display: flex;
+    padding: 0 16px;
+  }
+
+  .HaPayButton:disabled .HaPayButtonLabel {
+    background-color: #d1d6de;
+    color: #505870;
+  }
+
+  .HaPaySecured {
+    align-items: center;
+    justify-content: space-between;
+    display: flex;
+    column-gap: 5px;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  .HaPay svg {
+    fill: currentColor;
+  }
+
+  /* ============================================
+     TOASTS / NOTIFICATIONS
+     ============================================ */
+  
+  .toast, .message, .shop-message, .seller-toast, .admin-toast {
+    display: none;
+    position: fixed;
+    right: 22px;
+    bottom: 22px;
+    z-index: 2000;
+    max-width: min(400px, calc(100% - 44px));
+    padding: 13px 16px;
+    color: var(--theme-white);
+    background: var(--theme-blue);
+    border-radius: var(--radius-field);
+    box-shadow: 0 14px 36px rgba(0, 7, 97, 0.24);
+    font-family: Georgia, serif;
+  }
+
+  .toast.is-visible,
+  .message.is-visible,
+  .shop-message.is-visible,
+  .seller-toast.is-visible,
+  .admin-toast.is-visible {
+    display: block;
+  }
+
+  /* ============================================
+     ALERTES STOCK BAS
+     ============================================ */
+
+  .seller-stock-alert {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--theme-white);
+    border: 1px solid var(--theme-line);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .seller-stock-alert:hover {
+    border-color: var(--theme-gold);
+    box-shadow: 0 2px 8px rgba(200, 162, 74, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .seller-stock-alert.is-critical {
+    border-color: var(--theme-danger);
+    background: #fef2f2;
+  }
+
+  .seller-stock-alert.is-critical:hover {
+    border-color: var(--theme-danger);
+    box-shadow: 0 2px 8px rgba(154, 37, 48, 0.15);
+  }
+
+  .seller-stock-alert-icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--theme-sand);
+    color: var(--theme-blue);
+    font-size: 14px;
+  }
+
+  .seller-stock-alert.is-critical .seller-stock-alert-icon {
+    background: #ffebee;
+    color: var(--theme-danger);
+  }
+
+  .seller-stock-alert-copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .seller-stock-alert-copy strong {
+    color: var(--theme-blue);
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .seller-stock-alert-copy small {
+    color: var(--theme-muted);
+    font-size: 12px;
+  }
+
+  .seller-stock-alert-count {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-size: 13px;
+  }
+
+  .seller-stock-alert-count b {
+    color: var(--theme-blue);
+    font-size: 15px;
+  }
+
+  .seller-stock-alert.is-critical .seller-stock-alert-count b {
+    color: var(--theme-danger);
+  }
+
+  .seller-stock-alert-count small {
+    color: var(--theme-muted);
+    font-size: 11px;
+  }
+
+  .seller-stock-empty {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    text-align: center;
+    color: var(--theme-muted);
+    background: var(--theme-surface);
+    border-radius: 10px;
+  }
+
+  .seller-stock-empty i {
+    font-size: 20px;
+    color: var(--theme-gold);
+  }
+
+  .seller-stock-empty div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .seller-stock-empty strong {
+    color: var(--theme-blue);
+    font-size: 14px;
+  }
+
+  .seller-stock-empty span {
+    font-size: 12px;
+  }
+
+  /* ============================================
+     VISITE GUIDÉE
+     ============================================ */
+
+  .seller-tour-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    background: rgba(0, 7, 97, 0.85);
+    backdrop-filter: blur(4px);
+  }
+
+  .seller-tour-layer.is-open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .seller-tour-card {
+    background: var(--theme-white);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: min(500px, calc(100% - 40px));
+    box-shadow: 0 24px 48px rgba(0, 7, 97, 0.25);
+    animation: tourSlideIn 0.3s ease-out;
+  }
+
+  @keyframes tourSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .seller-tour-card h2 {
+    color: var(--theme-blue);
+    font-size: 20px;
+    margin: 8px 0 12px;
+  }
+
+  .seller-tour-card p {
+    color: var(--theme-ink);
+    font-size: 15px;
+    line-height: 1.5;
+    margin: 0 0 20px;
+  }
+
+  .seller-tour-progress {
+    color: var(--theme-gold) !important;
+    font-size: 13px !important;
+    font-weight: bold !important;
+  }
+
+  .seller-tour-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 20px;
+  }
+
+  .seller-tour-actions button {
+    min-height: 42px;
+    padding: 0 18px;
+  }
+
+  .seller-tour-actions button:first-child {
+    background: var(--theme-soft);
+    color: var(--theme-blue);
+    border-color: var(--theme-soft);
+  }
+
+  .seller-tour-actions button:last-child {
+    background: var(--theme-blue);
+    color: var(--theme-white);
+    border-color: var(--theme-blue);
+  }
+
+  /* Mise en évidence de la cible de la visite */
+  .seller-tour-target {
+    position: relative;
+    z-index: 3001;
+    box-shadow: 0 0 0 3px rgba(200, 162, 74, 0.4) !important;
+    border-radius: 8px !important;
+  }
+
+  /* ============================================
+     GRAPHIQUES CSS LÉGERS (remplacement Chart.js)
+     ============================================ */
+
+  .seller-insight-chart {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .seller-insight-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 40px 20px;
+    color: var(--theme-muted);
+    text-align: center;
+    height: 100%;
+    min-height: 200px;
+  }
+
+  .seller-insight-empty i {
+    font-size: 32px;
+    color: var(--theme-soft);
+    opacity: 0.6;
+  }
+
+  .seller-insight-empty span {
+    font-size: 14px;
+    max-width: 240px;
+  }
+
+  /* Camembert CSS */
+  .seller-light-chart-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  .seller-pie-chart-light {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 7, 97, 0.12);
+  }
+
+  .seller-pie-center {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--theme-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Légende du camembert */
+  .seller-pie-legend {
+    margin-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 180px;
+  }
+
+  .seller-pie-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .seller-pie-legend-item span:first-child {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .seller-pie-legend-item strong {
+    color: var(--theme-blue);
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Barres de classement */
+  .seller-ranking-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--theme-line);
+  }
+
+  .seller-ranking-row:last-child {
+    border-bottom: none;
+  }
+
+  .seller-ranking-position {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--theme-sand);
+    color: var(--theme-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+
+  .seller-ranking-copy {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .seller-ranking-copy strong {
+    display: block;
+    color: var(--theme-blue);
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+
+  .seller-bar-container {
+    height: 8px;
+    background: var(--theme-soft);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 6px 0;
+  }
+
+  .seller-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--theme-blue), var(--theme-gold));
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+
+  .seller-ranking-copy b {
+    color: var(--theme-blue);
+    font-size: 14px;
+  }
+
+  .seller-ranking-copy small {
+    color: var(--theme-muted);
+    font-size: 11px;
+  }
+
+  /* Graphique financier */
+  .seller-finance-row {
+    margin-bottom: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--theme-line);
+  }
+
+  .seller-finance-row:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .seller-finance-row > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+
+  .seller-finance-row > div:first-child span {
+    color: var(--theme-muted);
+    font-size: 13px;
+  }
+
+  .seller-finance-row > div:first-child strong {
+    color: var(--theme-blue);
+    font-size: 14px;
+  }
+
+  .seller-finance-meter {
+    height: 10px;
+    border-radius: 5px;
+    transition: width 0.5s ease;
+  }
+
+  .seller-finance-revenue {
+    background: linear-gradient(90deg, var(--theme-gold), #d4b865);
+  }
+
+  .seller-finance-costs {
+    background: linear-gradient(90deg, var(--theme-soft), #bfc1d8);
+  }
+
+  .seller-finance-result {
+    background: linear-gradient(90deg, var(--theme-blue), #0012b3);
+  }
+
+  .seller-finance-negative {
+    background: linear-gradient(90deg, var(--theme-danger), #c62828);
+  }
+
+  .seller-finance-info {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--theme-surface);
+    border-radius: var(--radius-field);
+    font-size: 13px;
+    color: var(--theme-ink);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .seller-finance-info i {
+    color: var(--theme-gold);
+  }
+
+  .seller-finance-info strong {
+    color: var(--theme-blue);
+  }
+
+  /* ============================================
+     RESPONSIVE - Mobile First
+     ============================================ */
+  
+  @media (max-width: 920px) {
+    .topbar, .seller-topbar, .admin-topbar {
+      align-items: stretch;
+      flex-direction: column;
+      padding: 12px 16px;
+    }
+    
+    .tabs, .seller-tabs, .admin-tabs {
+      margin: 12px 0;
+    }
+    
+    .tabs button,
+    .seller-tabs button,
+    .admin-tabs button {
+      min-height: 38px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+  }
+
+  @media (max-width: 580px) {
+    /* Ancienne regle body{width:min(100% - 24px, 760px)} supprimee : sans
+       marge auto, elle retrecissait TOUTE la page de 24px cote droit (bandeau
+       vendeur compris). Invisible tant que doGet n'envoyait pas de balise
+       viewport (le telephone simulait alors un ecran de 980px). */
+    .topbar, .seller-topbar, .admin-topbar {
+      padding: 10px 12px;
+    }
+    
+    .tabs, .seller-tabs, .admin-tabs {
+      padding: 6px;
+      gap: 6px;
+    }
+    
+    .tabs button,
+    .seller-tabs button,
+    .admin-tabs button {
+      min-height: 36px;
+      padding: 0 8px;
+      font-size: 11px;
+    }
+  }
+
+  /* ============================================
+     MODALES ET PANNEAUX COMPLETS
+     ============================================ */
+  
+  .cart-header,
+  .checkout-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--theme-line);
+    background: var(--theme-white);
+  }
+
+  .cart-header h2,
+  .checkout-header h2 {
+    margin: 0;
+    padding: 0;
+    font-size: 19px;
+    line-height: 1.3;
+    color: var(--theme-blue);
+  }
+
+  /* Panneaux en pleine page */
+  .shop-full-window,
+  .cart-page,
+  #article-full-page {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    overflow-y: auto;
+    background: var(--theme-white);
+  }
+
+  .shop-full-window.is-open,
+  .cart-page.is-open,
+  #article-full-page.is-open {
+    display: block;
+  }
+
+  /* .account-panel retire du groupe ci-dessus : c'etait un 3e systeme de
+     conteneur "plein page" (max-width:900px + marges + coins arrondis),
+     entierement distinct de .shop-full-window et invisible tant que
+     d'autres regles, ailleurs, le recouvraient couche par couche au fil des
+     sessions precedentes. Ces regles ayant fini par etre nettoyees (Mon
+     compte partage maintenant .shop-full-window comme Mon panier), ce bloc
+     redevenait actif et retrecissait tout le panneau a 900px centres,
+     laissant le catalogue visible ET CLIQUABLE sur les cotes — capture
+     d'ecran a l'appui. #account-panel garde la classe .account-panel (utile a
+     CSS_boutique_refonte.html pour des regles de contenu), mais plus aucune
+     regle ICI ne redefinit sa taille ou sa position — c'est .shop-full-window
+     seule qui en decide desormais, comme pour Mon panier. */
+
+  /* Blocs .cart-page / #article-full-page supprimes : SELECTEURS MORTS.
+     Aucun element ne porte la classe "cart-page" (la page panier est
+     #cart-page avec la classe .shop-full-window) ni l'id "article-full-page".
+     Verifie par recherche dans tous les HTML_*/SCRIPT_* avant suppression. */
+
+  /* Famille .account-tabs / .account-tab / .account-tab-panel /
+     .account-list-item / .account-order-row / .order-document-link
+     SUPPRIMEE ici : entierement redefinie par CSS_boutique_refonte.html,
+     charge apres. Elle n'etait pas totalement inerte — son
+     `border-bottom` sur .account-tabs (que refonte ne redefinit pas)
+     s'appliquait quand meme et ajoutait un trait parasite sous les onglets
+     de Mon compte. Meme piege de doublon que .account-panel et
+     .cart-page-* : source unique de verite = CSS_boutique_refonte.html.
+     .account-stats-grid reste ici : refonte ne la definit pas. */
+
+  .account-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 16px 0;
+  }
+
+  /* ============================================
+     STYLES POUR LE PANIER
+     ============================================ */
+
+  /* Panier latéral (aperçu) */
+  .cart-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(400px, 100%);
+    height: 100%;
+    background: var(--theme-white);
+    box-shadow: -10px 0 30px rgba(0, 7, 97, 0.15);
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .cart-drawer.is-open {
+    transform: translateX(0);
+  }
+
+  .cart-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--theme-line);
+    background: var(--theme-white);
+  }
+
+  .cart-preview-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--theme-muted);
+    font-size: 15px;
+  }
+
+  .cart-preview-lines {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cart-preview-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: var(--theme-surface);
+    border-radius: var(--radius-field);
+    border: 1px solid var(--theme-line);
+  }
+
+  .cart-preview-line img {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .cart-preview-line div {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cart-preview-line strong {
+    display: block;
+    color: var(--theme-blue);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .cart-preview-line span {
+    display: block;
+    color: var(--theme-muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .cart-preview-line small {
+    color: var(--theme-muted);
+    font-size: 12px;
+  }
+
+  .cart-preview-more {
+    padding: 10px 16px;
+    text-align: center;
+    color: var(--theme-muted);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .cart-preview-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-top: 1px solid var(--theme-line);
+    background: var(--theme-white);
+    margin-top: auto;
+  }
+
+  .cart-preview-total span {
+    color: var(--theme-muted);
+    font-size: 14px;
+  }
+
+  .cart-preview-total strong {
+    color: var(--theme-blue);
+    font-size: 18px;
+  }
+
+  .cart-preview-hint {
+    padding: 12px 16px;
+    text-align: center;
+    color: var(--theme-muted);
+    font-size: 12px;
+    border-top: 1px solid var(--theme-line);
+  }
+
+  /* Bloc "Panier pleine page" (.cart-page-card/-empty/-lines/-line/-quantity/
+     -total/-remove/-summary) SUPPRIME : il faisait doublon avec
+     CSS_boutique_refonte.html, charge apres lui, qui redefinit toute cette
+     famille. Meme piege que le fantome .account-panel corrige la session
+     precedente — et il mordait deja : `.cart-page-card { max-width: 800px }`
+     survivait ici (aucune regle de refonte ne posant max-width), ce qui
+     bridait la page panier a 800px alors que tous les autres panneaux
+     plein ecran font 1040px. Ne pas redefinir ces classes ici : la source
+     unique de verite est CSS_boutique_refonte.html. */
+
+  /* ============================================
+     TIMELINE DE COMMANDE
+     ============================================ */
+
+  .checkout-timeline {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 20px;
+    padding: 0 20px;
+    flex-wrap: wrap;
+  }
+
+  .timeline-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    flex: 1;
+    max-width: 140px;
+    min-width: 100px;
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  .timeline-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: -50%;
+    top: 50%;
+    width: 100%;
+    height: 2px;
+    background: var(--theme-soft);
+    z-index: 1;
+  }
+
+  @media (max-width: 600px) {
+    .timeline-step:not(:last-child)::after {
+      right: 0;
+      width: 20px;
+    }
+  }
+
+  .timeline-step.is-complete .timeline-number {
+    background: var(--theme-gold);
+    /* Bleu marine, pas blanc : blanc sur or = ~2:1, illisible (meme correctif
+       que les timelines checkout/formulaire deja corrigees). */
+    color: var(--theme-blue);
+  }
+
+  .timeline-step.is-active .timeline-number {
+    background: var(--theme-blue);
+    color: var(--theme-white);
+    box-shadow: 0 0 0 3px rgba(0, 7, 97, 0.3);
+  }
+
+  .timeline-step:not(.is-complete):not(.is-active) .timeline-number {
+    background: var(--theme-soft);
+    color: var(--theme-muted);
+  }
+
+  .timeline-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: bold;
+    margin: 0 auto 6px;
+    position: relative;
+    z-index: 2;
+    transition: all 0.3s ease;
+  }
+
+  .timeline-label {
+    color: var(--theme-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .timeline-step.is-complete .timeline-label,
+  .timeline-step.is-active .timeline-label {
+    color: var(--theme-blue);
+  }
+
+  .shop-full-window-card {
+    max-width: min(800px, calc(100% - 40px));
+    margin: 20px auto;
+    min-height: calc(100vh - 40px);
+    border: 1px solid var(--theme-line);
+    border-radius: 13px;
+    background: var(--theme-white);
+    box-shadow: 0 10px 25px rgba(0, 7, 97, 0.06);
+    overflow: hidden;
+  }
+
+  .shop-full-window-header {
+    padding: 16px 20px;
+    background: var(--theme-white);
+    border-bottom: 1px solid var(--theme-line);
+  }
+
+  .shop-full-window-header h2 {
+    margin: 0;
+    color: var(--theme-blue);
+    font-size: 19px;
+  }
+
+  .shop-full-window-body {
+    padding: 20px;
+  }
+
+  /* Formulaire article en pleine page */
+  .article-full-card {
+    max-width: min(900px, calc(100% - 40px));
+    margin: 20px auto;
+    min-height: calc(100vh - 40px);
+  }
+
+  .article-full-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
+
+  .article-full-body .seller-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .article-full-body .seller-field-wide {
+    grid-column: 1 / -1;
+  }
+
+  .article-full-body .seller-dialog-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding: 16px 0;
+    border-top: 1px solid var(--theme-line);
+    margin-top: 8px;
+  }
+
+  /* Fix: Boutons de fermeture */
+  .cart-header button,
+  .checkout-header button,
+  .shop-full-window-header button {
+    min-height: 38px;
+    padding: 0 12px;
+    color: var(--theme-blue);
+    background: var(--theme-white);
+    border: 1px solid var(--theme-line);
+    border-radius: 7px;
+    font: bold 13px Georgia, serif;
+    cursor: pointer;
+  }
+
+  .cart-header button:hover,
+  .checkout-header button:hover,
+  .shop-full-window-header button:hover {
+    background: var(--theme-sand);
+    border-color: var(--theme-gold);
+  }
+
+  /* Boutons spéciaux dans checkout-header */
+  .checkout-header.button {
+    min-height: 40px;
+    padding: 0 16px;
+  }
+
+  /* ============================================
+     ÉTAPES DE COMMANDE (Checkout Steps)
+     ============================================ */
+  
+  .checkout-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.52);
+    padding: 20px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .checkout-panel.is-open {
+    display: flex;
+  }
+
+  .checkout-card {
+    margin: 0 auto;
+    max-width: min(600px, calc(100% - 40px));
+  }
+
+  .checkout-card {
+    max-width: min(600px, calc(100% - 40px));
+    margin: 0 auto;
+    background: var(--theme-white);
+    border: 1px solid var(--theme-line);
+    border-radius: 13px;
+    box-shadow: 0 10px 25px rgba(0, 7, 97, 0.06);
+    overflow: hidden;
+  }
+
+  .checkout-grid {
+    display: grid;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  .checkout-body {
+    padding: 20px;
+  }
+
+  .checkout-pay-button,
+  .checkout-next-button {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 20px;
+    color: var(--theme-white);
+    background: var(--theme-blue);
+    border: 1px solid var(--theme-blue);
+    border-radius: var(--radius-field);
+    font: bold 15px Georgia, serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .checkout-pay-button:hover,
+  .checkout-next-button:hover:not(:disabled) {
+    background: var(--theme-ink);
+    border-color: var(--theme-ink);
+    box-shadow: 0 4px 12px rgba(0, 7, 97, 0.2);
+  }
+
+  .checkout-next-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .checkout-note {
+    margin-top: 12px;
+    color: var(--theme-muted);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  /* Shipping Options */
+  .shipping-options {
+    display: grid;
+    gap: 12px;
+  }
+
+  .shipping-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 2px solid var(--theme-line);
+    border-radius: 10px;
+    background: var(--theme-white);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .shipping-option:hover {
+    border-color: var(--theme-gold);
+    box-shadow: 0 2px 8px rgba(200, 162, 74, 0.15);
+  }
+
+  .shipping-option input[type="radio"] {
+    margin-top: 4px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--theme-gold);
+    flex-shrink: 0;
+  }
+
+  .shipping-option label {
+    display: grid;
+    gap: 4px;
+    cursor: pointer;
+  }
+
+  .shipping-option label strong {
+    color: var(--theme-blue);
+    font-size: 15px;
+  }
+
+  .shipping-option label span {
+    color: var(--theme-muted);
+    font-size: 13px;
+  }
+
+  .shipping-option input[type="radio"]:checked + label strong {
+    color: var(--theme-gold);
+  }
+
+  .mondialrelay-form {
+    padding: 16px;
+    background: var(--theme-surface);
+    border-radius: 10px;
+    border: 1px solid var(--theme-line);
+  }
+
+  .mondialrelay-form input {
+    width: 100%;
+    min-height: 42px;
+    padding: 11px 13px;
+    color: var(--theme-blue);
+    background: var(--theme-white);
+    border: 1px solid var(--theme-soft);
+    border-radius: var(--radius-field);
+    font: 14px Georgia, serif;
+  }
+
+  .mondialrelay-results {
+    margin-top: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .mondialrelay-point {
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border: 1px solid var(--theme-line);
+    border-radius: var(--radius-field);
+    background: var(--theme-white);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .mondialrelay-point:hover {
+    border-color: var(--theme-gold);
+    background: var(--theme-sand);
+  }
+
+  .mondialrelay-point.selected {
+    border-color: var(--theme-blue);
+    background: var(--theme-blue);
+    color: var(--theme-white);
+  }
+
+  .mondialrelay-point strong {
+    display: block;
+    color: var(--theme-blue);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .mondialrelay-point.selected strong {
+    color: var(--theme-white);
+  }
+
+  .mondialrelay-point span {
+    display: block;
+    color: var(--theme-muted);
+    font-size: 12px;
+  }
+
+  .mondialrelay-point.selected span {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .mondialrelay-loading {
+    padding: 20px;
+    text-align: center;
+    color: var(--theme-muted);
+    font-size: 14px;
+  }
+
+  .mondialrelay-loading i {
+    margin-right: 8px;
+    color: var(--theme-gold);
+  }
+
+  /* Timeline de commande */
+  .checkout-timeline {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 20px;
+    padding: 0 20px;
+  }
+
+  .timeline-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    flex: 1;
+    max-width: 120px;
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  .timeline-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: -50%;
+    top: 50%;
+    width: 100%;
+    height: 2px;
+    background: var(--theme-soft);
+    z-index: 1;
+  }
+
+  .timeline-step.is-complete .timeline-number {
+    background: var(--theme-gold);
+    /* Bleu marine, pas blanc : blanc sur or = ~2:1, illisible (meme correctif
+       que les timelines checkout/formulaire deja corrigees). */
+    color: var(--theme-blue);
+  }
+
+  .timeline-step.is-active .timeline-number {
+    background: var(--theme-blue);
+    color: var(--theme-white);
+    box-shadow: 0 0 0 3px rgba(0, 7, 97, 0.3);
+  }
+
+  .timeline-step:not(.is-complete):not(.is-active) .timeline-number {
+    background: var(--theme-soft);
+    color: var(--theme-muted);
+  }
+
+  .timeline-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: bold;
+    margin: 0 auto 6px;
+    position: relative;
+    z-index: 2;
+    transition: all 0.3s ease;
+  }
+
+  .timeline-label {
+    color: var(--theme-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .timeline-step.is-complete .timeline-label,
+  .timeline-step.is-active .timeline-label {
+    color: var(--theme-blue);
+  }
+
+  /* ============================================
+     RESPONSIVE - SMARTPHONE
+     ============================================ */
+
+  @media (max-width: 768px) {
+    /* Header */
+    .shop-header {
+      padding: 12px 16px;
+    }
+    
+    .shop-header h1 {
+      font-size: 20px;
+    }
+    
+    .shop-header-actions button {
+      min-height: 38px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+    
+    .header-action-label {
+      display: none;
+    }
+    
+    /* Ancien body{padding-top:70px} supprime : prevu pour un en-tete
+       position:fixed qui n'existe plus (il est sticky), il laissait une bande
+       vide de 70px au-dessus de l'en-tete, client comme vendeur. */
+    .shop-layout {
+      width: min(100% - 24px, 760px);
+      padding: 0 0 24px;
+    }
+    
+    /* Regle "panels pleine page" SUPPRIMEE (elle imposait
+       width:min(100% - 24px, 760px) + marges + coins arrondis a
+       .account-panel) : Mon compte doit couvrir TOUT l'ecran sur mobile
+       aussi, comme Mon panier. Les deux autres selecteurs qui
+       l'accompagnaient (.cart-page .cart-page-card et
+       #article-full-page .article-full-card) etaient morts : aucun element
+       ne porte la classe "cart-page" ni l'id "article-full-page". */
+
+    /* Formulaires */
+    .checkout-grid {
+      gap: 10px;
+      padding: 16px;
+    }
+    
+    /* Champs : on GARDE 16px sur mobile (plus de passage a 15px). En dessous
+       de 16px, Safari iOS zoome automatiquement la page a chaque clic dans un
+       champ, puis ne dezoome pas — tres penible pour saisir une adresse. */
+
+    /* Boutons : :where() pour ne pas ecraser la taille propre a un composant
+       (icones de navigation, onglets...), comme la regle de base. */
+    :where(button, input[type="submit"]) {
+      font-size: 14px;
+    }
+    
+    /* Timeline */
+    .timeline-step {
+      max-width: 100px;
+      min-width: 80px;
+      padding: 6px 0;
+    }
+    
+    .timeline-number {
+      width: 28px;
+      height: 28px;
+      font-size: 12px;
+    }
+    
+    .timeline-label {
+      font-size: 10px;
+    }
+    
+    /* Alertes stock */
+    .seller-stock-alert {
+      padding: 10px 12px;
+      flex-direction: column;
+      text-align: center;
+    }
+    
+    .seller-stock-alert-icon {
+      margin: 0 auto 6px;
+    }
+    
+    /* Camembert */
+    .seller-light-chart-container {
+      flex-direction: column;
+    }
+    
+    .seller-pie-chart-light {
+      width: 140px;
+      height: 140px;
+    }
+    
+    .seller-pie-legend {
+      margin-left: 0;
+      margin-top: 12px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .shop-header {
+      padding: 10px 12px;
+    }
+    
+    .shop-header h1 {
+      font-size: 18px;
+    }
+
+    /* Meme suppression qu'au point de rupture 768px ci-dessus : plus aucune
+       largeur/marge imposee a .account-panel, il reste plein ecran. */
+
+    /* Timeline */
+    .checkout-timeline {
+      padding: 0 12px;
+    }
+    
+    .timeline-step {
+      max-width: 70px;
+      min-width: 70px;
+    }
+    
+    .timeline-step:not(:last-child)::after {
+      right: 0;
+      width: 12px;
+    }
+  }
+
+  /* ============================================
+     ARCHITECTURE ADMIN
+     ============================================ */
+
+  .admin-architecture-content {
+    padding: 20px;
+  }
+
+  .admin-architecture-diagram {
+    margin: 20px 0;
+    padding: 20px;
+    background: var(--theme-surface);
+    border-radius: 10px;
+    border: 1px solid var(--theme-line);
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--theme-muted);
+    font-size: 14px;
+  }
+
+  .admin-architecture-details {
+    margin-top: 20px;
+  }
+
+  .admin-architecture-details h3 {
+    color: var(--theme-blue);
+    font-size: 16px;
+    margin: 20px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--theme-line);
+  }
+
+  .admin-architecture-details p {
+    margin: 8px 0;
+    line-height: 1.5;
+  }
+
+  .admin-architecture-details ul {
+    margin: 8px 0;
+    padding-left: 20px;
+    list-style: disc;
+  }
+
+  .admin-architecture-details li {
+    margin: 6px 0;
+    line-height: 1.5;
+  }
+
+  /* ============================================
+     ALERTES STOCK BAS - Améliorées
+     ============================================ */
+
+  .seller-stock-alert {
+    font-size: 14px;
+  }
+
+  .seller-stock-alert-copy strong {
+    font-size: 14px;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .seller-stock-alert-count {
+    font-size: 14px;
+  }
+
+  /* Pour les alertes dans le dashboard */
+  #dashboard-stock-alerts {
+    max-height: 300px;
+  }
+
+  #dashboard-stock-alerts .seller-stock-alert {
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    background: var(--theme-white);
+    border: 1px solid var(--theme-line);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  #dashboard-stock-alerts .seller-stock-alert:hover {
+    border-color: var(--theme-gold);
+    box-shadow: 0 2px 8px rgba(200, 162, 74, 0.15);
+    transform: translateY(-1px);
+  }
+
+  /* ============================================
+     TIMELINE DANS CHECKOUT
+     ============================================ */
+
+  .checkout-panel .checkout-timeline {
+    margin-top: 20px;
+  }
+
+  /* ============================================
+     CORRECTION PANIER PLEINE PAGE
+     ============================================ */
+
+  /* Le cart-drawer est utilisé pour l'aperçu rapide après ajout
+     La cart-page est utilisée pour le panier complet */
+
+  /* Ajuster la position du checkout-panel pour smartphone */
+  @media (max-width: 768px) {
+    .checkout-panel {
+      padding-top: 90px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .checkout-panel {
+      padding-top: 80px;
+    }
+  }
+
+  /* ============================================
+     MENU CONTEXTUEL (clic droit) — partage vendeur/admin
+     ============================================ */
+
+  /* Volontairement PAS le style pilule/Georgia du reste de l'appli : un menu
+     contextuel doit se lire comme un outil systeme discret (repere : le
+     menu clic-droit d'Office), pas comme un element de la page. Lignes
+     fines, police sans-serif compacte, ombre legere, icones neutres. */
+  .menu-contextuel {
+    position: fixed;
+    z-index: 9000;
+    min-width: 200px;
+    padding: 3px;
+    background: var(--theme-white);
+    border: 1px solid var(--theme-line);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  }
+
+  .menu-contextuel-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 10px;
+    color: var(--theme-ink);
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    font: 13px/1.3 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    font-weight: normal;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .menu-contextuel-item:hover {
+    background: var(--theme-surface);
+  }
+
+  .menu-contextuel-item i {
+    width: 13px;
+    font-size: 12px;
+    text-align: center;
+    color: var(--theme-muted);
+  }
+
+  .menu-contextuel-item.is-danger {
+    color: var(--theme-danger);
+  }
+
+  .menu-contextuel-item.is-danger i {
+    color: var(--theme-danger);
+  }
+
+  .menu-contextuel-separateur {
+    margin: 3px 6px;
+    border-top: 1px solid var(--theme-line);
+  }
+</style>
+  <style>
+    body { display: grid; place-items: center; min-height: 100vh; padding: 16px; box-sizing: border-box; }
+    .rupture { width: min(460px, 100%); padding: 26px 22px; text-align: center; background: var(--theme-white); border: 1px solid var(--theme-line); border-radius: 16px; box-shadow: 0 18px 48px rgba(0, 7, 97, 0.12); }
+    .rupture img { width: 64px; height: 64px; object-fit: contain; }
+    .rupture h1 { margin: 10px 0 6px; color: var(--theme-blue); font-size: 21px; }
+    .rupture p { margin: 8px 0; color: var(--theme-muted); font-size: 15px; line-height: 1.5; }
+    .rupture .article { padding: 10px 12px; color: var(--theme-blue); background: var(--theme-sand); border-radius: 10px; font-weight: bold; }
+    .rupture .icone { margin: 8px 0; color: var(--theme-success); font-size: 44px; }
+    .rupture .choix { display: grid; gap: 10px; margin-top: 16px; }
+    .rupture .choix button { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 12px; padding: 12px 14px; color: var(--theme-blue); text-align: left; background: #fff; border: 2px solid var(--theme-line); border-radius: 12px; font: inherit; cursor: pointer; }
+    .rupture .choix button:hover:not(:disabled) { border-color: var(--theme-blue); }
+    .rupture .choix button i { font-size: 20px; text-align: center; }
+    .rupture .choix button strong { display: block; font-size: 15px; }
+    .rupture .choix button small { color: var(--theme-muted); font-size: 12px; line-height: 1.35; }
+    .rupture .choix button.is-choisi { border-color: var(--theme-success); background: #f0f9f2; }
+    .erreur { color: #9a2530 !important; }
+  </style>
+  <script>window.RUPTURE = __BOOTSTRAP_JSON__;</script>
+</head>
+<body>
+  <main class="rupture" id="rupture"></main>
+  <script>
+    (function () {
+      var r = window.RUPTURE || {};
+      var hote = document.getElementById('rupture');
+      var logo = '<img src="https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w200" alt="Boutique GDB">';
+      function echapper(v) { return String(v || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+      function euros(n) { return Number(n || 0).toFixed(2).replace('.', ',') + ' €'; }
+      var PHRASES = {
+        rembourser: 'Vous serez remboursé(e) : la boutique effectue le remboursement et vous prévient.',
+        avoir: 'Vous recevrez un avoir, déduit automatiquement de votre prochaine commande.',
+        attendre: 'Nous vous enverrons l\'article dès qu\'il sera réapprovisionné.'
+      };
+      function merci(choix) {
+        hote.innerHTML = logo + '<div class="icone"><i class="fa-solid fa-circle-check"></i></div><h1>C\'est noté, merci !</h1><p>' + echapper(PHRASES[choix] || '') + '</p>' +
+          '<p>Vous pouvez fermer cette page. Un changement d\'avis ? Rouvrez le lien de l\'e-mail tant que la boutique n\'a pas traité votre demande.</p>';
+      }
+      if (!r.valide) {
+        hote.innerHTML = logo + '<h1>Lien invalide</h1><p class="erreur">Ce lien ne correspond à aucune demande. Utilisez celui de l\'e-mail reçu.</p>';
+        return;
+      }
+      if (r.cloture) {
+        hote.innerHTML = logo + '<h1>Demande déjà traitée</h1><p>La boutique a déjà donné suite à cette demande (commande ' + echapper(r.reference) + '). Pour toute question, répondez à l\'e-mail reçu.</p>';
+        return;
+      }
+      hote.innerHTML = logo + '<h1>Article en rupture de stock</h1>' +
+        '<p>Commande <strong>' + echapper(r.reference) + '</strong> — désolés, cet article n\'est pas disponible pour le moment :</p>' +
+        '<p class="article">' + echapper(r.article) + ' × ' + echapper(r.quantite) + ' · ' + euros(r.montant) + '</p>' +
+        '<p>Que préférez-vous ?</p>' +
+        '<div class="choix">' +
+        '<button type="button" data-choix="rembourser"><i class="fa-solid fa-money-bill-transfer"></i><span><strong>Être remboursé(e)</strong><small>Le vendeur vous rembourse ' + euros(r.montant) + '.</small></span></button>' +
+        '<button type="button" data-choix="avoir"><i class="fa-solid fa-ticket"></i><span><strong>Recevoir un avoir</strong><small>' + euros(r.montant) + ' déduits de votre prochaine commande.</small></span></button>' +
+        '<button type="button" data-choix="attendre"><i class="fa-solid fa-truck-ramp-box"></i><span><strong>Recevoir l\'article plus tard</strong><small>Envoi dès que l\'article est réapprovisionné.</small></span></button>' +
+        '</div><p class="erreur" id="erreur" hidden></p>';
+      var courant = r.choix;
+      if (courant) { var b = hote.querySelector('[data-choix="' + courant + '"]'); if (b) b.classList.add('is-choisi'); }
+      hote.querySelectorAll('button[data-choix]').forEach(function (bouton) {
+        bouton.addEventListener('click', function () {
+          hote.querySelectorAll('button[data-choix]').forEach(function (b) { b.disabled = true; });
+          google.script.run
+            .withSuccessHandler(function () { merci(bouton.getAttribute('data-choix')); })
+            .withFailureHandler(function (e) {
+              hote.querySelectorAll('button[data-choix]').forEach(function (b) { b.disabled = false; });
+              var p = document.getElementById('erreur');
+              p.textContent = (e && e.message) || 'Erreur, réessayez.';
+              p.hidden = false;
+            })
+            .choisirOptionRupture(r.ru, bouton.getAttribute('data-choix'));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

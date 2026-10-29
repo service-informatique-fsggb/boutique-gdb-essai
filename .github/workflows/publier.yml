@@ -1,0 +1,43 @@
+# Publie le site ET un instantane des donnees de la boutique client
+# (donnees/client.json), rafraichi toutes les 10 minutes : la premiere visite
+# s'affiche sans attendre Apps Script. Fichier ecrit par construire.mjs.
+name: Publier la boutique
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Instantane des donnees (API Apps Script)
+        run: node .github/instantane.mjs
+        env:
+          URL_SITE: ${{ steps.pages.outputs.base_url }}/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploiement
+        uses: actions/deploy-pages@v4
