@@ -19,7 +19,7 @@
   var PAGES = {"client":"pages/client.ee29ca8f79.html","vendeur":"pages/vendeur.2e520698e7.html","admin":"pages/admin.8a8940e36b.html","test":"pages/test.57591c0321.html","paiement":"pages/paiement.2076f9aa7b.html","reception":"pages/reception.41e2612186.html","colis":"pages/colis.efbc63fd6e.html","rupture":"pages/rupture.560e4175a2.html","avis":"pages/avis.02b35c78a7.html","vendeur-autotest":"pages/vendeur-autotest.1a6df7370c.html"};
   var RACINE = new URL(".", document.currentScript.src).href;
   var CACHE_GABARITS = "boutique-gdb-gabarits";
-  var CLE_DONNEES = "boutique-gdb-donnees-client";
+  var CLE_DONNEES = "boutique-gdb-donnees-";   // + nom de l'instantane
   var DUREE_MAX = 7 * 86400000;
   var PAGE_DU_FICHIER = {
     HTML_Main: "client", HTML_Vendeur: "vendeur", HTML_Admin: "admin", "tests/HTML_Test": "test",
@@ -31,9 +31,12 @@
   new URLSearchParams(location.search).forEach(function (v, k) { params[k] = v; });
   var chemin = location.pathname.match(/\/(vendeur|admin|test)\/?(?:index\.html)?$/);
   if (chemin && !params.mode && !params.page) params.mode = chemin[1];
-  // Donnees gardees dans le navigateur : boutique client sans parametre
-  // seulement (jamais un lien personnel ni une page vendeur/admin).
-  var donneesEnCache = !Object.keys(params).length;
+  // Donnees gardees dans le navigateur et instantane publie : pages SANS
+  // parametre dans l'adresse seulement (/, /vendeur, /admin, /test). Un lien
+  // personnel (?ref=, ?adminMagic=, ?a=...) demande toujours le serveur.
+  var instantane = location.search.length > 1 ? "" : (chemin ? chemin[1] : "client");
+  // La page de test n'a pas de donnees de depart : jamais besoin du serveur.
+  var SANS_SERVEUR = { test: { titre: "Boutique GDB - Tests", bootstrap: {} } };
 
   // Meme regle que decrirePageWeb_ (BACK_Launch.js), pour demander le bon
   // gabarit sans attendre le serveur ; la reponse du serveur fait foi.
@@ -101,18 +104,18 @@
   }
 
   function lireDonnees() {
-    if (!donneesEnCache) return null;
+    if (!instantane) return null;
     try {
-      var copie = JSON.parse(localStorage.getItem(CLE_DONNEES) || "null");
+      var copie = JSON.parse(localStorage.getItem(CLE_DONNEES + instantane) || "null");
       if (copie && copie.page && PAGES[copie.page] && Date.now() - copie.date < DUREE_MAX) return copie;
     } catch (e) { /* stockage indisponible */ }
     return null;
   }
 
   function ecrireDonnees(page, reponse) {
-    if (!donneesEnCache) return;
+    if (!instantane) return;
     try {
-      localStorage.setItem(CLE_DONNEES, JSON.stringify({ date: Date.now(), page: page, titre: reponse.titre, bootstrap: reponse.bootstrap }));
+      localStorage.setItem(CLE_DONNEES + instantane, JSON.stringify({ date: Date.now(), page: page, titre: reponse.titre, bootstrap: reponse.bootstrap }));
     } catch (e) { /* plein ou bloque */ }
   }
 
@@ -188,15 +191,22 @@
     }).catch(function () { /* la reponse du serveur prendra le relais */ });
   }
 
-  // 1. Boutique client : la copie gardee par ce navigateur, sinon
-  //    l'INSTANTANE publie avec le site (donnees/client.json, rafraichi
-  //    automatiquement par GitHub, voir .github/workflows). Affichage
+  // 0. Page sans donnees (tests) : affichee tout de suite, sans serveur.
+  if (SANS_SERVEUR[instantane]) {
+    montrer(instantane, SANS_SERVEUR[instantane].titre, SANS_SERVEUR[instantane].bootstrap)
+      .catch(function (err) { echec(err && err.message || err); });
+    return;
+  }
+
+  // 1. Page sans parametre : la copie gardee par ce navigateur, sinon
+  //    l'INSTANTANE publie avec le site (donnees/<page>.json, republie par
+  //    GitHub des que les donnees changent : BACK_Github.js). Affichage
   //    immediat, sans attendre Apps Script.
-  if (donneesEnCache) {
+  if (instantane) {
     var copie = lireDonnees();
     if (copie) montrerProvisoire(copie);
     else {
-      fetch(new URL("donnees/client.json", RACINE).href, { cache: "no-cache" })
+      fetch(new URL("donnees/" + instantane + ".json", RACINE).href, { cache: "no-cache" })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(montrerProvisoire)
         .catch(function () { /* pas d'instantane : on attend le serveur */ });

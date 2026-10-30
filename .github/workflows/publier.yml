@@ -1,16 +1,26 @@
-# Publie le site ET un instantane des donnees de la boutique client
-# (donnees/client.json), rafraichi toutes les 20 minutes : la premiere visite
-# s'affiche sans attendre Apps Script. Fichier ecrit par construire.mjs.
+# Publie le site ET un instantane des donnees de depart des pages /, /vendeur
+# et /admin (donnees/<page>.json) : elles s'affichent sans attendre Apps
+# Script. Fichier ecrit par construire.mjs.
+#
+# Quand ?
+#  - "repository_dispatch" : envoye par Apps Script DES QUE les donnees
+#    publiques changent (declencheur lireEtPublierInstantaneGithub,
+#    BACK_Github.js, propriete de script GITHUB_JETON) ;
+#  - passage periodique, en secours. Depot prive : chaque passage compte
+#    ~1 min du quota Actions (3000 min/mois sur le compte Pro). Le passage
+#    toutes les 20 min (~2200 min/mois) ne sert que tant qu'Apps Script ne
+#    previent pas GitHub : variable du depot DECLENCHEUR_GOOGLE = oui pour
+#    ne garder que le passage toutes les 6 h.
 name: Publier la boutique
 
 on:
   push:
     branches: [main]
+  repository_dispatch:
+    types: [donnees-modifiees]
   schedule:
-    # Depot prive : chaque passage compte ~1 min du quota Actions (3000 min/mois
-    # sur le compte Pro). Toutes les 20 min = ~2200 min/mois. Depot public :
-    # gratuit, on pourra alors revenir a */10.
     - cron: "*/20 * * * *"
+    - cron: "7 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -24,6 +34,8 @@ concurrency:
 
 jobs:
   publier:
+    # Un travail ecarte ici ne consomme rien du quota.
+    if: github.event_name != 'schedule' || github.event.schedule == '7 */6 * * *' || vars.DECLENCHEUR_GOOGLE != 'oui'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
