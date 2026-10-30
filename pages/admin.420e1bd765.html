@@ -2517,6 +2517,7 @@
     min-height: 45px; padding: 0 15px; color: var(--admin-white); background: var(--admin-blue); border: 1px solid var(--admin-blue);
     border-radius: 8px; font: bold 14px Georgia, serif; cursor: pointer;
   }
+  .admin-access-card button.admin-access-secondaire { color: var(--admin-blue); background: var(--admin-white); border-color: var(--admin-soft); font-weight: normal; }
   .admin-access-message { min-height: 20px; margin: 16px 0 0; color: var(--admin-blue); font-weight: bold; text-align: center; }
   .admin-access-message.is-error { color: var(--admin-danger); }
   .admin-access-note { margin: 20px 0 0; color: var(--admin-muted); font-size: 12px; line-height: 1.45; text-align: center; }
@@ -3120,10 +3121,13 @@
         <h1>Espace administrateur</h1>
         <span>Accès sécurisé réservé au service informatique.</span>
       </div>
-      <form id="admin-request-form" onsubmit="demanderAccesAdmin(event)">
+      <form id="admin-request-form" onsubmit="connexionMotDePasseAdmin(event)">
         <label for="admin-email">Adresse autorisée</label>
-        <input id="admin-email" type="email" value="service-informatique@fsggb.fr" autocomplete="email" required>
-        <button type="submit"><i class="fa-solid fa-paper-plane"></i> Recevoir un code</button>
+        <input id="admin-email" type="email" value="service-informatique@fsggb.fr" autocomplete="username" required>
+        <label for="admin-mot-de-passe">Mot de passe administrateur</label>
+        <input id="admin-mot-de-passe" type="password" autocomplete="current-password">
+        <button type="submit"><i class="fa-solid fa-right-to-bracket"></i> Se connecter</button>
+        <button type="button" class="admin-access-secondaire" onclick="demanderAccesAdmin(event)"><i class="fa-solid fa-paper-plane"></i> Recevoir plutôt un code par e-mail</button>
       </form>
       <form id="admin-code-form" class="is-hidden" onsubmit="validerCodeAdmin(event)">
         <label for="admin-code">Code reçu par e-mail</label>
@@ -3405,6 +3409,16 @@
           </p>
           <div class="admin-announcement-row">
             <button type="button" onclick="ouvrirConsoleVendeurAdmin()"><i class="fa-solid fa-up-right-from-square"></i> Ouvrir la console vendeur</button>
+          </div>
+        </section>
+
+        <section class="admin-panel admin-announcement-form">
+          <div class="admin-panel-heading"><h2><i class="fa-solid fa-key"></i> Mot de passe administrateur</h2></div>
+          <p class="admin-announcement-hint" id="admin-mdp-etat">Permet de se connecter sans attendre un code par e-mail (le code reste possible en cas d’oubli). Au moins 10 caractères ; un e-mail vous prévient de chaque changement.</p>
+          <div class="admin-announcement-row">
+            <input id="admin-mdp-nouveau" type="password" autocomplete="new-password" placeholder="Nouveau mot de passe" aria-label="Nouveau mot de passe">
+            <input id="admin-mdp-confirmation" type="password" autocomplete="new-password" placeholder="Confirmation" aria-label="Confirmation du mot de passe">
+            <button type="button" onclick="enregistrerMotDePasseAdmin()"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
           </div>
         </section>
 
@@ -3750,6 +3764,56 @@
       .getEmailAdminSuggere();
   }
 
+  function connexionMotDePasseAdmin(event) {
+    event.preventDefault();
+    var email = document.getElementById('admin-email').value.trim().toLowerCase();
+    var motDePasse = document.getElementById('admin-mot-de-passe').value;
+    if (!motDePasse) {
+      setAdminAccessMessage('Saisissez le mot de passe, ou demandez un code par e-mail.', true);
+      return;
+    }
+    setAdminAccessMessage('Vérification du mot de passe…');
+    google.script.run
+      .withSuccessHandler(function (session) {
+        saveAdminSession(session.sessionToken);
+        afficherApplicationAdmin();
+        chargerAdministration();
+      })
+      .withFailureHandler(function (error) {
+        setAdminAccessMessage(getAdminErrorMessage(error), true);
+      })
+      .connexionAdminMotDePasse(email, motDePasse);
+  }
+
+  function chargerEtatMotDePasseAdmin() {
+    google.script.run
+      .withSuccessHandler(function (defini) {
+        var etat = document.getElementById('admin-mdp-etat');
+        if (etat) etat.insertAdjacentHTML('afterbegin', defini ? '<strong>Mot de passe défini.</strong> ' : '<strong>Aucun mot de passe défini pour l’instant.</strong> ');
+      })
+      .withFailureHandler(function () {})
+      .getMotDePasseAdminDefini(adminState.sessionToken);
+  }
+
+  function enregistrerMotDePasseAdmin() {
+    var champ = document.getElementById('admin-mdp-nouveau');
+    var confirmation = document.getElementById('admin-mdp-confirmation');
+    if (champ.value !== confirmation.value) {
+      afficherAdminToast('Les deux saisies ne correspondent pas.');
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function () {
+        champ.value = '';
+        confirmation.value = '';
+        afficherAdminToast('Mot de passe administrateur enregistré.');
+      })
+      .withFailureHandler(function (error) {
+        afficherAdminToast(getAdminErrorMessage(error));
+      })
+      .definirMotDePasseAdmin(adminState.sessionToken, champ.value);
+  }
+
   function demanderAccesAdmin(event) {
     event.preventDefault();
     var email = document.getElementById('admin-email').value.trim().toLowerCase();
@@ -3811,6 +3875,7 @@
       .getAdminDashboard(adminState.sessionToken);
     chargerAnnonceBoutiqueAdmin();
     chargerEtatModeTest();
+    chargerEtatMotDePasseAdmin();
   }
 
   // Annonce boutique (bandeau non bloquant cote client) : meme fonctions

@@ -9194,9 +9194,20 @@
     text-align: left;
   }
 
-  .seller-connexion-carte input[type="password"] {
+  .seller-connexion-carte input[type="password"],
+  .seller-connexion-carte input[type="email"],
+  .seller-connexion-carte input[name="code"] {
     min-height: 46px;
     font-size: 16px;
+  }
+
+  /* Page de test : autre moyen de connexion de l'administrateur. */
+  .seller-connexion-carte .seller-connexion-par-code {
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-line, #d5d8ee);
+    border-radius: 10px;
+    cursor: pointer;
   }
 
   .seller-connexion-carte button {
@@ -12298,43 +12309,57 @@
       try { return localStorage.getItem(CLE_ADMIN) || ""; } catch (e) { return ""; }
     }
 
-    // Formulaire de l'administrateur : e-mail, puis code a 6 chiffres recu par
+    // Formulaire de l'administrateur : e-mail + mot de passe administrateur
+    // (connexionAdminMotDePasse), ou, au choix, code a 6 chiffres recu par
     // e-mail (requestAdminAccess / verifyAdminAccessCode, BACK_Admin.js).
     function brancherFormulaireAdmin(form) {
       var champEmail = form.querySelector('input[name="email"]');
+      var champMdp = form.querySelector('input[name="password"]');
       var champCode = form.querySelector('input[name="code"]');
+      var blocMdp = form.querySelector(".seller-connexion-mdp");
       var blocCode = form.querySelector(".seller-connexion-code");
       var erreur = form.querySelector(".seller-connexion-erreur");
-      var bouton = form.querySelector("button");
+      var bouton = form.querySelector('button[type="submit"]');
+      var boutonCode = form.querySelector(".seller-connexion-par-code");
       var aide = form.querySelector(".seller-connexion-aide");
       var demande = "";
-      window.setTimeout(function () { champEmail.focus(); }, 50);
+      window.setTimeout(function () { champMdp.focus(); }, 50);
       function echec(err) {
         bouton.disabled = false;
+        boutonCode.disabled = false;
         erreur.textContent = String((err && err.message) || err).replace(/^Error:\s*/, "");
         erreur.hidden = false;
       }
+      function ouvrir(session) {
+        try { localStorage.setItem(CLE_ADMIN, session.sessionToken); } catch (err) {}
+        reel.withSuccessHandler(enregistrerSession).withFailureHandler(echec).connexionVendeurAdmin(session.sessionToken);
+      }
+      boutonCode.addEventListener("click", function () {
+        boutonCode.disabled = true;
+        erreur.hidden = true;
+        reel.withSuccessHandler(function (r) {
+          demande = r.requestId;
+          champEmail.readOnly = true;
+          blocMdp.hidden = true;
+          champMdp.required = false;
+          boutonCode.hidden = true;
+          blocCode.hidden = false;
+          champCode.required = true;
+          champCode.focus();
+          aide.textContent = "Code envoyé à " + r.email + " (valable 15 minutes).";
+        }).withFailureHandler(echec).requestAdminAccess(champEmail.value);
+      });
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         bouton.disabled = true;
         erreur.hidden = true;
-        if (!demande) {
-          reel.withSuccessHandler(function (r) {
-            demande = r.requestId;
-            bouton.disabled = false;
-            champEmail.readOnly = true;
-            blocCode.hidden = false;
-            champCode.required = true;
-            champCode.focus();
-            aide.textContent = "Code envoyé à " + r.email + " (valable 15 minutes).";
-            bouton.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Se connecter';
-          }).withFailureHandler(echec).requestAdminAccess(champEmail.value);
+        if (demande) {
+          reel.withSuccessHandler(ouvrir).withFailureHandler(function (err) { echec(err); champCode.select(); })
+            .verifyAdminAccessCode(demande, champCode.value);
           return;
         }
-        reel.withSuccessHandler(function (session) {
-          try { localStorage.setItem(CLE_ADMIN, session.sessionToken); } catch (err) {}
-          reel.withSuccessHandler(enregistrerSession).withFailureHandler(echec).connexionVendeurAdmin(session.sessionToken);
-        }).withFailureHandler(function (err) { echec(err); champCode.select(); }).verifyAdminAccessCode(demande, champCode.value);
+        reel.withSuccessHandler(ouvrir).withFailureHandler(function (err) { echec(err); champMdp.select(); })
+          .connexionAdminMotDePasse(champEmail.value, champMdp.value);
       });
     }
 
@@ -12362,10 +12387,12 @@
         ecran.id = "seller-connexion";
         ecran.className = "seller-connexion";
         var champs = modeAdmin ? [
-          '<label>Adresse e-mail de l\'administrateur<input type="email" name="email" autocomplete="email" required></label>',
+          '<label>Adresse e-mail de l\'administrateur<input type="email" name="email" value="service-informatique@fsggb.fr" autocomplete="username" required></label>',
+          '<div class="seller-connexion-mdp"><label>Mot de passe administrateur<input type="password" name="password" autocomplete="current-password" required></label></div>',
           '<div class="seller-connexion-code" hidden><label>Code reçu par e-mail<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label></div>',
           '<p class="seller-connexion-erreur" hidden></p>',
-          '<button type="submit" class="seller-confirm-button"><i class="fa-solid fa-envelope"></i> Recevoir un code</button>'
+          '<button type="submit" class="seller-confirm-button"><i class="fa-solid fa-right-to-bracket"></i> Se connecter</button>',
+          '<button type="button" class="seller-connexion-par-code"><i class="fa-solid fa-envelope"></i> Recevoir plutôt un code par e-mail</button>'
         ] : [
           '<input type="text" name="username" value="vendeur" autocomplete="username" hidden>',
           '<label>Mot de passe<input type="password" name="password" autocomplete="current-password" required></label>',
