@@ -12170,7 +12170,8 @@
   }
 </style>
 
-  <script>window.VENDEUR_BOOTSTRAP = {};</script>
+  <!-- Outils de test : connexion de l'ADMINISTRATEUR (code par e-mail), pas le mot de passe vendeur. -->
+  <script>window.VENDEUR_BOOTSTRAP = {}; window.SESSION_ADMIN_REQUISE = true;</script>
   <script>
   /* ===================== Connexion vendeur =====================
      Toute la page vendeur passe par appelVendeur(jeton, nom, args) (voir
@@ -12180,13 +12181,30 @@
      rejoues tels quels apres la connexion — aucun autre code de la page n'a
      a s'en soucier.
      ============================================================= */
+  /* Page des outils de test (window.SESSION_ADMIN_REQUISE, tests/HTML_Test) :
+     meme mecanisme, mais la session doit venir de l'ADMINISTRATEUR (code
+     recu par e-mail, ou session admin deja ouverte dans ce navigateur) ; le
+     serveur refuse les outils de test a une session vendeur ordinaire.
+
+     Tant qu'il n'y a pas de session, RIEN de la page n'est affiche (classe
+     session-verrouillee posee des le <head>) : plus d'interface visible une
+     fraction de seconde avant l'ecran de connexion. La vraie protection reste
+     celle du serveur (ZZ_ProtectionVendeur.js) : la page ne contient aucune
+     donnee protegee, elle les demande apres la connexion. */
   (function () {
     if (typeof google === "undefined" || !google.script || !google.script.run) return;
     var reel = google.script.run;
-    var CLE = "boutique_session_vendeur_v1";
+    var modeAdmin = window.SESSION_ADMIN_REQUISE === true;
+    var CLE = modeAdmin ? "boutique_session_test_v1" : "boutique_session_vendeur_v1";
+    var CLE_ADMIN = "boutiqueGdbAdminSession";   // celle de la page admin (SCRIPT_Admin.html)
     var PUBLIQUES = { connexionVendeur: 1, connexionVendeurAdmin: 1, getAnnonceBoutique: 1, verifierSessionAdmin: 1 };
     var enAttente = [];
     var connexionAffichee = false;
+
+    var style = document.createElement("style");
+    style.textContent = "html.session-verrouillee body > :not(#seller-connexion) { visibility: hidden !important; }";
+    (document.head || document.documentElement).appendChild(style);
+    function verrouiller(oui) { document.documentElement.classList.toggle("session-verrouillee", !!oui); }
 
     function lireSession() {
       try {
@@ -12264,6 +12282,7 @@
 
     function enregistrerSession(session) {
       try { localStorage.setItem(CLE, JSON.stringify(session)); } catch (e) {}
+      verrouiller(false);
       fermerConnexion();
       if (typeof window.surConnexionVendeur_ === "function") window.surConnexionVendeur_(session.jeton);
       rejouer();
@@ -12275,36 +12294,98 @@
       connexionAffichee = false;
     }
 
+    function lireJetonAdmin() {
+      try { return localStorage.getItem(CLE_ADMIN) || ""; } catch (e) { return ""; }
+    }
+
+    // Formulaire de l'administrateur : e-mail, puis code a 6 chiffres recu par
+    // e-mail (requestAdminAccess / verifyAdminAccessCode, BACK_Admin.js).
+    function brancherFormulaireAdmin(form) {
+      var champEmail = form.querySelector('input[name="email"]');
+      var champCode = form.querySelector('input[name="code"]');
+      var blocCode = form.querySelector(".seller-connexion-code");
+      var erreur = form.querySelector(".seller-connexion-erreur");
+      var bouton = form.querySelector("button");
+      var aide = form.querySelector(".seller-connexion-aide");
+      var demande = "";
+      window.setTimeout(function () { champEmail.focus(); }, 50);
+      function echec(err) {
+        bouton.disabled = false;
+        erreur.textContent = String((err && err.message) || err).replace(/^Error:\s*/, "");
+        erreur.hidden = false;
+      }
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        bouton.disabled = true;
+        erreur.hidden = true;
+        if (!demande) {
+          reel.withSuccessHandler(function (r) {
+            demande = r.requestId;
+            bouton.disabled = false;
+            champEmail.readOnly = true;
+            blocCode.hidden = false;
+            champCode.required = true;
+            champCode.focus();
+            aide.textContent = "Code envoyé à " + r.email + " (valable 15 minutes).";
+            bouton.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Se connecter';
+          }).withFailureHandler(echec).requestAdminAccess(champEmail.value);
+          return;
+        }
+        reel.withSuccessHandler(function (session) {
+          try { localStorage.setItem(CLE_ADMIN, session.sessionToken); } catch (err) {}
+          reel.withSuccessHandler(enregistrerSession).withFailureHandler(echec).connexionVendeurAdmin(session.sessionToken);
+        }).withFailureHandler(function (err) { echec(err); champCode.select(); }).verifyAdminAccessCode(demande, champCode.value);
+      });
+    }
+
     function afficherConnexion(message) {
       if (connexionAffichee) return;
       connexionAffichee = true;
+      verrouiller(true);
       var monter = function () {
-        // Console ouverte en mode administrateur : pas de mot de passe.
+        // Session administrateur deja ouverte (lien de la page admin, ou page
+        // admin deja connectee dans ce navigateur) : pas de mot de passe.
         var boot = window.VENDEUR_BOOTSTRAP || {};
-        if (boot.estAdmin && boot.adminToken) {
+        var jetonAdmin = boot.estAdmin && boot.adminToken ? boot.adminToken : (modeAdmin ? lireJetonAdmin() : "");
+        if (jetonAdmin) {
           reel.withSuccessHandler(enregistrerSession)
-            .withFailureHandler(function () { connexionAffichee = false; boot.estAdmin = false; afficherConnexion(message); })
-            .connexionVendeurAdmin(boot.adminToken);
+            .withFailureHandler(function () {
+              connexionAffichee = false;
+              boot.estAdmin = false;
+              if (modeAdmin) { try { localStorage.removeItem(CLE_ADMIN); } catch (e) {} }
+              afficherConnexion(message);
+            })
+            .connexionVendeurAdmin(jetonAdmin);
           return;
         }
         var ecran = document.createElement("div");
         ecran.id = "seller-connexion";
         ecran.className = "seller-connexion";
-        ecran.innerHTML = [
-          '<form class="seller-connexion-carte" autocomplete="on">',
-          '<img src="https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w200" alt="" class="seller-connexion-logo">',
-          '<h1>Interface vendeur</h1>',
-          '<p class="seller-connexion-aide"></p>',
+        var champs = modeAdmin ? [
+          '<label>Adresse e-mail de l\'administrateur<input type="email" name="email" autocomplete="email" required></label>',
+          '<div class="seller-connexion-code" hidden><label>Code reçu par e-mail<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label></div>',
+          '<p class="seller-connexion-erreur" hidden></p>',
+          '<button type="submit" class="seller-confirm-button"><i class="fa-solid fa-envelope"></i> Recevoir un code</button>'
+        ] : [
           '<input type="text" name="username" value="vendeur" autocomplete="username" hidden>',
           '<label>Mot de passe<input type="password" name="password" autocomplete="current-password" required></label>',
           '<p class="seller-connexion-erreur" hidden></p>',
-          '<button type="submit" class="seller-confirm-button"><i class="fa-solid fa-right-to-bracket"></i> Se connecter</button>',
+          '<button type="submit" class="seller-confirm-button"><i class="fa-solid fa-right-to-bracket"></i> Se connecter</button>'
+        ];
+        ecran.innerHTML = [
+          '<form class="seller-connexion-carte" autocomplete="on">',
+          '<img src="' + String(boot.logoBoutique || "https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w200").replace(/"/g, "") + '" alt="" class="seller-connexion-logo">',
+          modeAdmin ? '<h1>Interface de test</h1>' : '<h1>Interface vendeur</h1>',
+          '<p class="seller-connexion-aide"></p>'
+        ].concat(champs, [
           ((window.VENDEUR_BOOTSTRAP || {}).urlApplication ? '<a class="seller-connexion-boutique" target="_top" href="' + String(window.VENDEUR_BOOTSTRAP.urlApplication).replace(/"/g, '') + '">Retour à la boutique</a>' : ''),
           '</form>'
-        ].join("");
-        ecran.querySelector(".seller-connexion-aide").textContent = message || "Connectez-vous pour gérer la boutique.";
+        ]).join("");
+        ecran.querySelector(".seller-connexion-aide").textContent = message ||
+          (modeAdmin ? "Réservé à l'administrateur : un code d'accès vous sera envoyé par e-mail." : "Connectez-vous pour gérer la boutique.");
         document.body.appendChild(ecran);
         var form = ecran.querySelector("form");
+        if (modeAdmin) { brancherFormulaireAdmin(form); return; }
         var champ = form.querySelector('input[type="password"]');
         var erreur = form.querySelector(".seller-connexion-erreur");
         var bouton = form.querySelector("button");
@@ -12326,6 +12407,10 @@
       };
       if (document.body) monter(); else document.addEventListener("DOMContentLoaded", monter);
     }
+
+    // Pas de session : ecran de connexion tout de suite (page masquee), sans
+    // attendre le premier appel au serveur.
+    if (protectionActive && !lireSession()) afficherConnexion();
 
     window.deconnexionVendeur_ = function () {
       try { localStorage.removeItem(CLE); } catch (e) {}
@@ -12571,6 +12656,21 @@
         <p class="pv-test-note">Le scénario crée un référent « tête de chaîne » temporaire avec l'adresse du « client » du scénario complet (ci-dessous), passe une commande TEST par virement au-delà du stock, la marque payée, puis supprime tout. <b>Deux vrais e-mails</b> partent vers cette adresse.</p>
         <div id="pv-resume" class="pv-test-resume"></div>
         <div id="pv-fonctions" class="pv-test-liste"><p class="pv-test-note">Chargement…</p></div>
+      </section>
+
+      <!-- VERSION GITHUB (developpement/statique/) : meme API, memes donnees Drive/Sheets. -->
+      <section class="test-card">
+        <h2><i class="fa-brands fa-github"></i> Version GitHub (essai)</h2>
+        <p>
+          La même boutique, mais dont l'interface est servie par GitHub : affichage immédiat à partir d'une copie des
+          données, puis mise à jour par Google. Elle lit et écrit dans <b>les mêmes classeurs</b> que la version principale.
+        </p>
+        <div class="test-actions">
+          <a class="seller-tabs" href="https://javabatchcss.github.io/boutique-gdb-essai/" target="_blank" rel="noopener"><i class="fa-solid fa-store"></i> Boutique</a>
+          <a class="seller-tabs" href="https://javabatchcss.github.io/boutique-gdb-essai/vendeur" target="_blank" rel="noopener"><i class="fa-solid fa-boxes-stacked"></i> Console vendeur</a>
+          <a class="seller-tabs" href="https://javabatchcss.github.io/boutique-gdb-essai/admin" target="_blank" rel="noopener"><i class="fa-solid fa-user-shield"></i> Admin</a>
+          <a class="seller-tabs" href="https://javabatchcss.github.io/boutique-gdb-essai/test" target="_blank" rel="noopener"><i class="fa-solid fa-flask"></i> Tests</a>
+        </div>
       </section>
 
       <section class="test-card batterie">
