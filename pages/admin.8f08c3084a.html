@@ -2518,6 +2518,17 @@
     border-radius: 8px; font: bold 14px Georgia, serif; cursor: pointer;
   }
   .admin-access-card button.admin-access-secondaire { color: var(--admin-blue); background: var(--admin-white); border-color: var(--admin-soft); font-weight: normal; }
+  .admin-competences-liste { display: grid; gap: 10px; }
+  .admin-competence { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--admin-line); border-radius: 8px; background: var(--admin-white); }
+  .admin-competence h3 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0; color: var(--admin-blue); font-size: 15px; }
+  .admin-competence p { margin: 0; }
+  .admin-competence pre { margin: 6px 0 0; padding: 10px; white-space: pre-wrap; background: #f6f7fb; border-radius: 6px; font: 13px/1.45 Georgia, serif; }
+  .admin-competence small { color: var(--admin-muted); }
+  .admin-competence-statut { padding: 2px 8px; border-radius: 99px; background: var(--admin-soft); font-size: 11px; font-weight: normal; }
+  .admin-competence-proposee { border-color: var(--admin-gold); }
+  .admin-competence-refusee { opacity: .6; }
+  .admin-competence-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .admin-competence-actions button { min-height: 34px; padding: 0 12px; color: var(--admin-blue); background: var(--admin-white); border: 1px solid var(--admin-line); border-radius: 8px; font: bold 13px Georgia, serif; cursor: pointer; }
   .admin-access-message { min-height: 20px; margin: 16px 0 0; color: var(--admin-blue); font-weight: bold; text-align: center; }
   .admin-access-message.is-error { color: var(--admin-danger); }
   .admin-access-note { margin: 20px 0 0; color: var(--admin-muted); font-size: 12px; line-height: 1.45; text-align: center; }
@@ -3013,6 +3024,1230 @@
   .admin-drive-subtabs { display: none; }
 </style>
 
+  <style>
+  /* PANNEAU CHATGDB COMMUN : regles « seller-ia-* » extraites de CSS_Vendeur.html (genere par
+     developpement/outils/extraire-css-chatgdb.mjs ; ne pas modifier a la main). Utilise par la console admin ;
+     la console vendeur garde sa copie dans CSS_Vendeur.html. */
+@keyframes seller-ia-rappel {
+    0% { box-shadow: 0 0 0 0 rgba(200, 162, 74, 0.7); }
+    100% { box-shadow: 0 0 0 16px rgba(200, 162, 74, 0); }
+  }
+@keyframes seller-ia-onde {
+    from { transform: scale(0.4); opacity: 1; }
+    to { transform: scale(1.6); opacity: 0; }
+  }
+@keyframes ia-etincelle {
+    0% { opacity: 0; transform: rotate(var(--a)) translateY(-8px) scale(.3) rotate(0deg); }
+    20% { opacity: 1; }
+    100% { opacity: 0; transform: rotate(var(--a)) translateY(-22px) scale(1.1) rotate(160deg); }
+  }
+@keyframes ia-point { 0%, 80%, 100% { opacity: .25; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.15); } }
+.seller-ia-bouton-flottant {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 4000;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--seller-white);
+    background: var(--seller-blue);
+    border: 2px solid var(--seller-gold);
+    border-radius: 50%;
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0, 7, 97, 0.35);
+  }
+body.seller-ia-panneau-ouvert .seller-ia-bouton-flottant {
+    display: none;
+  }
+.chatgdb-logo {
+    display: inline-block;
+    width: auto;
+    height: 1.3em;
+    vertical-align: middle;
+    object-fit: contain;
+  }
+.seller-ia-bouton-flottant:has(.chatgdb-logo) {
+    background: var(--seller-white);
+  }
+.seller-ia-bouton-flottant .chatgdb-logo {
+    height: 34px;
+    max-width: 40px;
+  }
+@media (min-width: 1025px) {
+  body.seller-ia-panneau-ouvert {
+      padding-right: var(--ia-panneau-largeur);
+      transition: padding-right 0.25s ease;
+    }
+}
+.seller-ia-panneau {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4001;
+    display: flex;
+    flex-direction: column;
+    width: var(--ia-panneau-largeur);
+    background: var(--seller-white);
+    border-left: 1px solid var(--seller-soft);
+    box-shadow: -12px 0 32px rgba(0, 7, 97, 0.18);
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+  }
+.seller-ia-panneau.is-ouvert {
+    transform: translateX(0);
+  }
+.seller-ia-panneau-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    color: var(--seller-white);
+    background: var(--seller-blue);
+  }
+.seller-ia-panneau-entete h2 {
+    margin: 0;
+    font-size: 17px;
+    color: var(--seller-white);
+  }
+.seller-ia-panneau-fermer {
+    color: var(--seller-white);
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+  }
+.seller-ia-gate {
+    padding: 24px;
+    text-align: center;
+    color: var(--seller-muted);
+  }
+.seller-ia-gate-form {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 12px;
+  }
+.seller-ia-gate-form input {
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--seller-soft);
+    border-radius: var(--radius-field);
+    max-width: 220px;
+  }
+.seller-ia-gate-form button {
+    min-height: 42px;
+    padding: 0 18px;
+    color: var(--seller-white);
+    background: var(--seller-blue);
+    border: 1px solid var(--seller-blue);
+    border-radius: var(--radius-field);
+    font-weight: bold;
+    cursor: pointer;
+  }
+.seller-ia-gate-erreur {
+    margin-top: 10px;
+    color: var(--theme-danger);
+    font-size: 13px;
+  }
+.seller-ia-chat:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 16px;
+  }
+.seller-ia-note {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    color: var(--seller-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--seller-bg);
+    border-radius: 8px;
+  }
+.seller-ia-mode-switch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: var(--seller-muted);
+  }
+.seller-ia-mode-switch button {
+    padding: 5px 12px;
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+    border-radius: var(--radius-pill);
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+.seller-ia-mode-switch button.is-actif {
+    color: var(--seller-white);
+    background: var(--seller-blue);
+    border-color: var(--seller-blue);
+  }
+.seller-ia-mode-switch button#ia-mode-ecriture.is-actif {
+    background: var(--seller-gold);
+    border-color: var(--seller-gold);
+    color: #3a2a00;
+  }
+.seller-ia-note.mode-ecriture {
+    color: #6b4a00;
+    background: #fff8e6;
+    border: 1px solid var(--seller-gold);
+  }
+.seller-ia-image-apercu {
+    padding: 10px;
+  }
+.seller-ia-image-apercu img {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    margin: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--seller-border);
+  }
+.seller-ia-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-height: 120px;
+    overflow-y: auto;
+    padding: 4px 2px;
+  }
+.seller-ia-bulle {
+    max-width: 92%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+.seller-ia-bulle ul, .seller-ia-bulle ol {
+    margin: 4px 0;
+    padding-left: 20px;
+  }
+.seller-ia-bulle code {
+    padding: 1px 5px;
+    background: rgba(0, 7, 97, 0.08);
+    border-radius: 4px;
+    font-size: 13px;
+  }
+.seller-ia-bulle.role-user,
+  .seller-ia-bulle.role-erreur {
+    white-space: pre-wrap;
+  }
+.seller-ia-bulle.role-user {
+    align-self: flex-end;
+    color: var(--seller-white);
+    background: var(--seller-blue);
+    border-bottom-right-radius: 3px;
+  }
+.seller-ia-bulle.role-assistant {
+    align-self: flex-start;
+    color: var(--seller-blue);
+    background: var(--seller-bg);
+    border: 1px solid var(--seller-border);
+    border-bottom-left-radius: 3px;
+  }
+.seller-ia-bulle.role-erreur {
+    align-self: flex-start;
+    color: var(--theme-danger);
+    background: var(--theme-danger-bg);
+    border: 1px dashed var(--theme-danger);
+  }
+.seller-ia-bulle.role-chargement {
+    align-self: flex-start;
+    color: var(--seller-muted);
+    font-style: italic;
+  }
+.seller-ia-bulle.role-proposition {
+    align-self: stretch;
+    max-width: 100%;
+    color: #6b4a00;
+    background: #fff8e6;
+    border: 1px solid var(--seller-gold);
+  }
+.seller-ia-bulle.role-proposition p {
+    margin: 0 0 8px;
+  }
+.seller-ia-bulle.role-proposition p:first-child {
+    font-weight: bold;
+  }
+.seller-ia-proposition-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+.seller-ia-proposition-actions button {
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: var(--radius-field);
+    font-weight: bold;
+    cursor: pointer;
+  }
+.seller-ia-proposition-actions button:not(.seller-confirm-button) {
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+  }
+.seller-ia-lot-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 6px 0 -4px;
+    padding: 6px 10px;
+    color: var(--seller-muted);
+    font-size: 12px;
+    background: var(--seller-bg);
+    border-radius: 8px;
+  }
+.seller-ia-lot-actions button {
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: var(--radius-field);
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+.seller-ia-lot-actions button:not(.seller-confirm-button) {
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+  }
+.seller-ia-action-effectuee {
+    border-left: 3px solid var(--seller-gold);
+  }
+.seller-ia-action-effectuee .seller-ia-proposition-actions button {
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+    color: var(--seller-blue);
+  }
+.seller-ia-clarification .seller-ia-proposition-actions {
+    flex-wrap: wrap;
+  }
+.seller-ia-clarification .seller-ia-proposition-actions button {
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+  }
+.seller-ia-input-bar {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--seller-soft);
+  }
+.seller-ia-input-bar textarea {
+    flex: 1;
+    resize: none;
+    padding: 10px 12px;
+    border: 1px solid var(--seller-soft);
+    border-radius: 8px;
+    font: 14px Georgia, serif;
+  }
+.seller-ia-input-bar button {
+    min-width: 46px;
+    color: var(--seller-white);
+    background: var(--seller-blue);
+    border: 1px solid var(--seller-blue);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+.seller-ia-input-bar button:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+  }
+.seller-ia-input-bar button#ia-envoyer.is-arret {
+    background: var(--theme-danger);
+    border-color: var(--theme-danger);
+  }
+.seller-ia-input-bar button.seller-ia-joindre {
+    min-width: 40px;
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-soft);
+  }
+.seller-ia-chat {
+    position: relative;
+  }
+.seller-ia-chat.is-depot::after {
+    content: "Déposez vos images ou fichiers ici";
+    position: absolute;
+    inset: 6px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--seller-blue);
+    font-weight: bold;
+    background: rgba(255, 248, 230, 0.92);
+    border: 3px dashed var(--seller-gold);
+    border-radius: 12px;
+    pointer-events: none;
+  }
+.seller-ia-pieces:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 132px;
+    overflow-y: auto;
+    margin-top: 10px;
+  }
+.seller-ia-pieces[hidden] {
+    display: none;
+  }
+.seller-ia-piece {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 3px 4px 3px 4px;
+    color: var(--seller-blue);
+    font-size: 12px;
+    background: var(--seller-bg);
+    border: 1px solid var(--seller-border);
+    border-radius: 8px;
+  }
+.seller-ia-piece img {
+    width: 30px;
+    height: 30px;
+    object-fit: cover;
+    border-radius: 5px;
+  }
+.seller-ia-piece.is-erreur {
+    color: var(--theme-danger);
+    background: var(--theme-danger-bg);
+    border-color: var(--theme-danger);
+  }
+.seller-ia-piece-nom {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+.seller-ia-piece button {
+    padding: 0 4px;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+.seller-ia-pieces-envoyees {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+  }
+.seller-ia-pieces-envoyees img {
+    width: 42px;
+    height: 42px;
+    object-fit: cover;
+    border-radius: var(--radius-field);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+.seller-ia-bulle.role-galerie {
+    align-self: stretch;
+    max-width: 100%;
+    padding: 8px;
+    background: var(--seller-bg);
+    border: 1px solid var(--seller-border);
+  }
+.seller-ia-galerie {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px;
+  }
+.seller-ia-galerie figure,
+  .seller-ia-apercu-paire {
+    margin: 0;
+    font-size: 11px;
+    color: var(--seller-muted);
+  }
+.seller-ia-galerie figcaption,
+  .seller-ia-apercu-paire figcaption {
+    margin-top: 3px;
+    line-height: 1.3;
+  }
+.seller-ia-vignette {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+  }
+.seller-ia-vignette img {
+    display: block;
+    width: 100%;
+    max-height: 150px;
+    object-fit: contain;
+    background: #fff;
+    border: 1px solid var(--seller-border);
+    border-radius: var(--radius-field);
+  }
+.seller-ia-vignette img.is-casse {
+    min-height: 60px;
+    background: var(--theme-danger-bg);
+  }
+.seller-ia-vignette small {
+    display: block;
+    text-align: center;
+  }
+.seller-ia-apercus {
+    display: grid;
+    gap: 10px;
+    max-height: 340px;
+    overflow-y: auto;
+    margin: 6px 0 8px;
+  }
+.seller-ia-apercu-images {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+.seller-ia-apercu-images .seller-ia-vignette,
+  .seller-ia-apercu-images .seller-ia-sans-image {
+    flex: 1;
+    min-width: 0;
+  }
+.seller-ia-sans-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
+    text-align: center;
+    background: var(--seller-white);
+    border: 1px dashed var(--seller-border);
+    border-radius: var(--radius-field);
+  }
+.seller-ia-bulle.role-guide {
+    align-self: stretch;
+    max-width: 100%;
+    color: var(--seller-blue);
+    background: #eef3ff;
+    border: 1px solid var(--seller-blue);
+  }
+.seller-ia-guide-titre {
+    margin: 0 0 6px;
+    font-weight: bold;
+  }
+.seller-ia-guide-etapes {
+    margin: 0;
+    padding-left: 22px;
+  }
+.seller-ia-guide-etapes li {
+    margin: 6px 0;
+  }
+.seller-ia-guide-etapes li.is-fait {
+    color: var(--seller-muted);
+    text-decoration: line-through;
+    text-decoration-color: rgba(0, 7, 97, 0.25);
+  }
+.seller-ia-guide-etapes li.is-a-venir {
+    color: var(--seller-muted);
+  }
+.seller-ia-guide-etapes li.is-courant {
+    padding: 6px 8px;
+    font-weight: bold;
+    background: var(--seller-white);
+    border-left: 3px solid var(--seller-gold);
+    border-radius: var(--radius-field);
+  }
+.seller-ia-bulle.role-guide p {
+    margin: 6px 0 0;
+  }
+.seller-ia-proposition-actions button.seller-ia-lien,
+  .seller-ia-guide-etapes button.seller-ia-lien {
+    min-height: 0;
+    padding: 0 2px;
+    color: var(--seller-blue);
+    font-weight: normal;
+    text-decoration: underline;
+    background: none;
+    border: none;
+  }
+body.seller-ia-guide-actif .seller-ia-bouton-flottant {
+    animation: seller-ia-rappel 1.4s infinite;
+  }
+body.seller-visite-active .seller-ia-curseur.is-visite {
+    z-index: 10030;
+  }
+.seller-ia-bouton-flottant.a-du-nouveau::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 13px;
+    height: 13px;
+    background: var(--theme-danger);
+    border: 2px solid var(--seller-white);
+    border-radius: 50%;
+  }
+.seller-ia-composeur {
+    margin-top: 12px;
+    border: 1px solid var(--seller-soft);
+    border-radius: 12px;
+    background: var(--seller-white);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+.seller-ia-composeur:focus-within {
+    border-color: var(--seller-gold);
+    box-shadow: 0 0 0 3px rgba(200, 162, 74, 0.18);
+  }
+.seller-ia-composeur textarea {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    max-height: 40vh;
+    padding: 10px 12px 4px;
+    box-sizing: border-box;
+    resize: none;
+    overflow-y: hidden;
+    border: 0;
+    outline: none;
+    background: transparent;
+    font: 14px/1.45 Georgia, serif;
+  }
+.seller-ia-barre {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 6px;
+  }
+.seller-ia-barre-espace {
+    flex: 1;
+    min-width: 0;
+  }
+body.seller-ia-panneau-ouvert:not(:has(#seller-tour-backdrop.is-open)) .seller-tour-target {
+    z-index: auto !important;
+  }
+.seller-ia-outil {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+    color: var(--seller-muted);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+  }
+.seller-ia-outil:hover,
+  .seller-ia-outil.is-actif {
+    color: var(--seller-blue);
+    background: var(--theme-surface-alt);
+  }
+.seller-ia-barre .seller-ia-selecteur {
+    flex: 0 1 auto;
+    width: auto !important;
+    min-width: 0;
+    max-width: 130px;
+    min-height: 28px;
+    height: 28px;
+    padding: 0 22px 0 8px;
+    color: var(--seller-blue);
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+.seller-ia-barre .seller-ia-selecteur:hover {
+    border-color: var(--seller-soft);
+  }
+.seller-ia-barre .seller-ia-selecteur.is-ecriture {
+    color: #6b4a00;
+    background-color: #fff8e6;
+    border-color: var(--seller-gold);
+  }
+.seller-ia-barre .seller-ia-selecteur.is-apprentissage {
+    color: var(--theme-success);
+    background-color: rgba(46, 125, 50, 0.07);
+  }
+.seller-ia-barre #ia-envoyer {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    color: var(--seller-white);
+    background: var(--seller-blue);
+    border: 0;
+    border-radius: 8px;
+  }
+.seller-ia-barre #ia-envoyer.is-arret {
+    background: var(--theme-danger);
+  }
+.seller-ia-reglages {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    margin-top: 10px;
+    padding: 10px;
+    background: var(--seller-bg);
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--seller-muted);
+  }
+.seller-ia-reglages label {
+    display: grid;
+    gap: 3px;
+  }
+.seller-ia-reglages select {
+    min-height: 32px;
+    font-size: 13px;
+  }
+.seller-ia-reglages .seller-ia-note {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+.seller-ia-curseur {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    z-index: 6000;
+    color: var(--seller-blue);
+    font-size: 26px;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+    opacity: 0;
+    pointer-events: none;
+    transition-property: left, top, opacity, transform;
+    transition-timing-function: cubic-bezier(0.3, 0.7, 0.3, 1);
+    transition-duration: 500ms;
+  }
+.seller-ia-curseur i {
+    -webkit-text-stroke: 1.5px var(--seller-white);
+  }
+.seller-ia-curseur.is-visible {
+    opacity: 1;
+  }
+.seller-ia-curseur.is-clic {
+    transform: scale(0.82);
+  }
+.seller-ia-curseur.is-clic::after {
+    content: "";
+    position: absolute;
+    left: -12px;
+    top: -12px;
+    width: 30px;
+    height: 30px;
+    border: 3px solid var(--seller-gold);
+    border-radius: 50%;
+    animation: seller-ia-onde 0.4s ease-out forwards;
+  }
+.seller-ia-demo-cible {
+    outline: 3px solid var(--seller-gold) !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 6px rgba(200, 162, 74, 0.25) !important;
+    transition: outline-offset 0.2s ease;
+  }
+@media (prefers-reduced-motion: reduce) {
+  .seller-ia-curseur {
+      transition-duration: 0ms !important;
+    }
+}
+.seller-ia-bulle.role-chronologie {
+    max-width: 100%;
+    padding: 10px 12px;
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+  }
+.seller-ia-chrono-entete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    margin-bottom: 6px;
+    color: var(--seller-blue);
+    font-size: 14px;
+  }
+.seller-ia-chrono-compte {
+    color: var(--seller-muted);
+    font-size: 12px;
+  }
+.seller-ia-chrono-outils {
+    display: inline-flex;
+    gap: 10px;
+    margin-left: auto;
+  }
+.seller-ia-chrono {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+.seller-ia-chrono::before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    background: var(--seller-border);
+  }
+.seller-ia-chrono-etape {
+    position: relative;
+    padding: 2px 0;
+  }
+.seller-ia-chrono-ligne {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+.seller-ia-chrono-titre {
+    all: unset;
+    display: flex;
+    flex: 1;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 0;
+    color: var(--seller-ink, var(--seller-blue));
+    font-size: 13px;
+    line-height: 1.35;
+    cursor: pointer;
+  }
+.seller-ia-chrono-titre i {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 20px;
+    margin-top: 1px;
+    text-align: center;
+    color: var(--seller-soft);
+    background: var(--seller-white);
+    font-size: 15px;
+  }
+.seller-ia-chrono-etape.is-courant .seller-ia-chrono-titre {
+    font-weight: bold;
+    color: var(--seller-blue);
+  }
+.seller-ia-chrono-etape.is-courant .seller-ia-chrono-titre i,
+  .seller-ia-chrono-etape.is-encours .seller-ia-chrono-titre i {
+    color: var(--seller-gold);
+  }
+.seller-ia-chrono-etape.is-fait .seller-ia-chrono-titre i {
+    color: var(--theme-success);
+  }
+.seller-ia-chrono-etape.is-passe .seller-ia-chrono-titre {
+    color: var(--seller-muted);
+    text-decoration: line-through;
+  }
+.seller-ia-chrono-etape.is-erreur .seller-ia-chrono-titre i {
+    color: var(--theme-danger);
+  }
+.seller-ia-chrono-retirer {
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    min-height: 26px;
+    padding: 0;
+    color: var(--seller-muted);
+    background: transparent;
+    border: 0;
+    opacity: 0.6;
+  }
+.seller-ia-chrono-retirer:hover {
+    opacity: 1;
+    color: var(--theme-danger);
+  }
+.seller-ia-chrono-corps {
+    margin: 2px 0 8px 28px;
+    font-size: 13px;
+  }
+.seller-ia-chrono-corps > p {
+    margin: 0 0 6px;
+  }
+.seller-ia-chrono-micro {
+    margin: 4px 0 6px;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+    color: var(--seller-muted);
+  }
+.seller-ia-chrono-micro li {
+    display: flex;
+    gap: 6px;
+    padding: 1px 0;
+  }
+.seller-ia-chrono-micro li::before {
+    content: "○";
+    flex: 0 0 12px;
+  }
+.seller-ia-chrono-micro li.is-encours {
+    color: var(--seller-blue);
+    font-weight: bold;
+  }
+.seller-ia-chrono-micro li.is-encours::before {
+    content: "▸";
+    color: var(--seller-gold);
+  }
+.seller-ia-chrono-micro li.is-fait::before {
+    content: "✓";
+    color: var(--theme-success);
+  }
+.seller-ia-chrono-micro li.is-erreur::before {
+    content: "✕";
+    color: var(--theme-danger);
+  }
+.seller-ia-chrono-resultat {
+    margin: 4px 0;
+    color: var(--theme-success);
+    font-weight: bold;
+  }
+.seller-ia-chrono-etape.is-erreur .seller-ia-chrono-resultat {
+    color: var(--theme-danger);
+  }
+.seller-ia-panneau-entete {
+    gap: 4px;
+    padding: 10px 10px 10px 14px;
+  }
+.seller-ia-panneau-entete h2 {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 15px;
+  }
+.seller-ia-panneau-entete h2 span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+.seller-ia-entete-bouton {
+    flex-shrink: 0;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.85);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    font-size: 15px;
+  }
+.seller-ia-entete-bouton:hover {
+    color: var(--seller-white);
+    background: rgba(255, 255, 255, 0.14);
+  }
+.seller-ia-vue:not([hidden]) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+.seller-ia-messages {
+    gap: 14px;
+    padding: 4px 2px 8px;
+  }
+.seller-ia-message {
+    display: flex;
+    flex-direction: column;
+  }
+.seller-ia-message.role-user {
+    align-items: flex-end;
+  }
+.seller-ia-message.role-assistant,
+  .seller-ia-message.role-erreur {
+    align-items: stretch;
+  }
+.seller-ia-bulle.role-user {
+    max-width: 85%;
+    color: var(--seller-blue);
+    background: var(--theme-surface-alt);
+    border: 1px solid var(--seller-border);
+    border-radius: 14px;
+  }
+.seller-ia-bulle.role-assistant {
+    max-width: 100%;
+    padding: 2px 2px;
+    color: var(--theme-ink, #1f2340);
+    background: transparent;
+    border: 0;
+  }
+.seller-ia-message-actions {
+    display: flex;
+    gap: 2px;
+    margin-top: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+.seller-ia-message:hover .seller-ia-message-actions,
+  .seller-ia-message:focus-within .seller-ia-message-actions {
+    opacity: 1;
+  }
+@media (hover: none) {
+  .seller-ia-message-actions {
+      opacity: 0.55;
+    }
+}
+.seller-ia-message-actions button {
+    width: 28px;
+    min-width: 28px;
+    height: 26px;
+    min-height: 26px;
+    padding: 0;
+    color: var(--seller-muted);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+.seller-ia-message-actions button:hover {
+    color: var(--seller-blue);
+    background: var(--theme-surface-alt);
+  }
+.seller-ia-accueil {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 100%;
+    padding: 20px 8px;
+    text-align: center;
+  }
+.seller-ia-accueil-logo {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    color: var(--seller-gold);
+    font-size: 30px;
+  }
+.seller-ia-accueil-logo img {
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
+  }
+.seller-ia-accueil-titre {
+    margin: 0 0 6px;
+    color: var(--seller-blue);
+    font-size: 19px;
+  }
+.seller-ia-suggestions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+.seller-ia-suggestions button {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 6px;
+    min-height: 72px;
+    padding: 10px 12px;
+    color: var(--seller-blue);
+    background: var(--seller-white);
+    border: 1px solid var(--seller-border);
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: normal;
+    text-align: left;
+  }
+.seller-ia-suggestions button i {
+    color: var(--seller-gold);
+  }
+.seller-ia-suggestions button:hover {
+    border-color: var(--seller-gold);
+    background: var(--theme-hover-bg);
+  }
+.seller-ia-composeur textarea::placeholder {
+    color: var(--seller-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+.seller-ia-recherche {
+    width: 100%;
+    min-height: 40px;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+  }
+.seller-ia-historique {
+    flex: 1;
+    overflow-y: auto;
+  }
+.seller-ia-historique-groupe {
+    margin: 12px 4px 4px;
+    color: var(--seller-muted);
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+.seller-ia-historique-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 6px 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+.seller-ia-historique-item:hover,
+  .seller-ia-historique-item:focus-visible {
+    background: var(--theme-surface-alt);
+    outline: none;
+  }
+.seller-ia-historique-item.is-actuelle {
+    background: var(--seller-sand);
+  }
+.seller-ia-historique-titre {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--seller-blue);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+.seller-ia-historique-date {
+    flex-shrink: 0;
+    color: var(--seller-muted);
+    font-size: 11px;
+  }
+.seller-ia-historique-action {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    color: var(--seller-muted);
+    background: transparent;
+    border: 0;
+    opacity: 0;
+    font-size: 12px;
+  }
+.seller-ia-historique-item:hover .seller-ia-historique-action {
+    opacity: 1;
+  }
+@media (hover: none) {
+  .seller-ia-historique-action {
+      opacity: 0.6;
+    }
+}
+.seller-ia-vide {
+    margin: 30px 0;
+    color: var(--seller-muted);
+    text-align: center;
+    font-size: 14px;
+  }
+.seller-ia-vue-reglages {
+    overflow-y: auto;
+  }
+.seller-ia-reglages-section {
+    display: grid;
+    gap: 10px;
+    padding: 4px 2px 16px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--seller-border);
+    font-size: 13px;
+    color: var(--seller-muted);
+  }
+.seller-ia-reglages-section h3 {
+    margin: 0;
+    color: var(--seller-blue);
+    font-size: 14px;
+  }
+.seller-ia-reglages-section label {
+    display: grid;
+    gap: 4px;
+  }
+.seller-ia-plafond {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+.seller-ia-plafond input {
+    width: 110px !important;
+  }
+.seller-ia-consommation {
+    display: grid;
+    gap: 8px;
+  }
+.seller-ia-conso-ligne {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    padding: 8px 10px;
+    background: var(--seller-bg);
+    border-radius: 8px;
+  }
+.seller-ia-conso-ligne strong {
+    color: var(--seller-blue);
+    text-align: right;
+  }
+.seller-ia-conso-ligne small {
+    grid-column: 1 / -1;
+    font-size: 11px;
+  }
+.seller-ia-conso-jauge {
+    grid-column: 1 / -1;
+    height: 5px;
+    overflow: hidden;
+    background: var(--seller-border);
+    border-radius: 3px;
+  }
+.seller-ia-conso-jauge span {
+    display: block;
+    height: 100%;
+    background: var(--seller-gold);
+  }
+.seller-ia-curseur.is-visite {
+    z-index: 10003;
+  }
+@media (max-width: 640px) {
+  .seller-ia-bouton-flottant {
+      right: 12px;
+      bottom: max(12px, env(safe-area-inset-bottom));
+    }
+}
+.seller-ia-attente { display: flex; align-items: center; gap: 10px; padding: 8px 4px; }
+.seller-ia-attente .ia-orbite { position: relative; display: inline-grid; place-items: center; width: 46px; height: 46px; flex-shrink: 0; }
+.seller-ia-attente .ia-logo { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; }
+.seller-ia-attente .ia-logo img { width: 22px; height: 22px; object-fit: contain; }
+.seller-ia-attente .ia-logo i { color: var(--seller-blue); font-size: 16px; }
+.seller-ia-attente .ia-etincelle {
+    position: absolute; top: 50%; left: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; opacity: 0;
+    transform: rotate(var(--a)) translateY(-8px) scale(.3);
+    animation: ia-etincelle var(--d) ease-out var(--t) infinite;
+  }
+.seller-ia-attente .ia-etincelle svg { display: block; width: 100%; height: 100%; fill: #d97757; }
+.seller-ia-attente .ia-points { display: inline-flex; gap: 4px; }
+.seller-ia-attente .ia-points i { width: 6px; height: 6px; border-radius: 50%; background: var(--seller-muted); animation: ia-point 1.2s ease-in-out infinite; }
+.seller-ia-attente .ia-points i:nth-child(2) { animation-delay: .18s; }
+.seller-ia-attente .ia-points i:nth-child(3) { animation-delay: .36s; }
+.seller-ia-attente .ia-libelle { color: var(--seller-muted); font-size: 12px; }
+.seller-ia-attente .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (prefers-reduced-motion: reduce) {
+  .seller-ia-attente .ia-etincelle { animation: none; opacity: .6; transform: rotate(var(--a)) translateY(-16px) scale(.7); }
+  .seller-ia-attente .ia-points i { animation: none; opacity: .7; }
+}
+.seller-ia-galerie { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.seller-ia-galerie .seller-ia-vignette img { max-height: 84px; }
+.seller-ia-galerie figure { position: relative; }
+.seller-ia-choisir { position: relative; display: block; width: 100%; padding: 0; border: 2px solid transparent; border-radius: var(--radius-field); background: none; cursor: pointer; }
+.seller-ia-choisir:hover { border-color: var(--seller-gold); }
+.seller-ia-choisir-libelle { position: absolute; left: 2px; right: 2px; bottom: 2px; padding: 1px 0; color: #fff; background: rgba(0, 7, 97, 0.82); border-radius: 4px; font: 700 10px/1.4 system-ui, sans-serif; text-align: center; opacity: 0; transition: opacity 0.12s ease; }
+.seller-ia-choisir:hover .seller-ia-choisir-libelle, .seller-ia-choisir:focus-visible .seller-ia-choisir-libelle { opacity: 1; }
+@media (hover: none) {
+  .seller-ia-choisir-libelle { opacity: 1; }
+}
+.seller-ia-loupe { position: absolute; top: 3px; right: 3px; display: grid; place-items: center; width: 20px; height: 20px; color: #fff; background: rgba(0, 7, 97, 0.7); border-radius: 50%; font-size: 10px; }
+.seller-ia-galerie.a-choisi .seller-ia-choisir { opacity: 0.55; pointer-events: none; }
+</style>
+
   <script>
   // TELEPHONE : zones tactiles decalees. La page tourne dans des iframes
   // (Apps Script) ; quand le clavier se ferme (ou apres un zoom automatique),
@@ -3422,6 +4657,12 @@
           </div>
         </section>
 
+        <section class="admin-panel" id="admin-competences-panel">
+          <div class="admin-panel-heading"><h2><i class="fa-solid fa-graduation-cap"></i> Compétences de ChatGDB</h2><span id="admin-competences-compteur"></span></div>
+          <p class="admin-announcement-hint">Quand ChatGDB a dû improviser une procédure absente de sa base, il la propose ici. Une compétence n’est <strong>utilisable qu’une fois approuvée</strong> ; elle ne donne aucun pouvoir en plus (mêmes outils, mêmes confirmations du vendeur). Lisez la procédure avant d’approuver ; vous pouvez la corriger dans la feuille « CompetencesIA » du classeur.</p>
+          <div id="admin-competences-liste" class="admin-competences-liste"></div>
+        </section>
+
         <section class="admin-panel" id="admin-mode-test-panel">
           <div class="admin-panel-heading"><h2><i class="fa-solid fa-flask"></i> Mode test des paiements</h2></div>
           <p class="admin-announcement-hint">Permet de valider une commande <strong>sans paiement réel</strong>, pour vérifier le circuit complet (validation vendeur, e-mails, stock) sans payer à chaque essai. S'éteint automatiquement au bout de 4 heures.</p>
@@ -3785,11 +5026,91 @@
       .connexionAdminMotDePasse(email, motDePasse);
   }
 
+  // Compétences proposées par ChatGDB : le texte vient du modèle, donc affiché
+  // uniquement par textContent (jamais en HTML).
+  function chargerCompetencesAdmin() {
+    google.script.run
+      .withSuccessHandler(rendreCompetencesAdmin)
+      .withFailureHandler(function () {})
+      .getCompetencesIA(adminState.sessionToken);
+  }
+
+  function rendreCompetencesAdmin(liste) {
+    var hote = document.getElementById('admin-competences-liste');
+    if (!hote) return;
+    hote.textContent = '';
+    liste = liste || [];
+    var enAttente = liste.filter(function (c) { return c.statut === 'Proposee'; }).length;
+    var compteur = document.getElementById('admin-competences-compteur');
+    if (compteur) compteur.textContent = enAttente ? enAttente + ' à examiner' : '';
+    if (!liste.length) {
+      var vide = document.createElement('p');
+      vide.className = 'admin-announcement-hint';
+      vide.textContent = 'Aucune compétence pour l’instant.';
+      hote.appendChild(vide);
+      return;
+    }
+    var libelles = { Proposee: 'À examiner', Approuvee: 'Approuvée', Refusee: 'Refusée' };
+    liste.forEach(function (c) {
+      var carte = document.createElement('article');
+      carte.className = 'admin-competence admin-competence-' + String(c.statut).toLowerCase();
+      var titre = document.createElement('h3');
+      titre.textContent = c.titre;
+      var badge = document.createElement('span');
+      badge.className = 'admin-competence-statut';
+      badge.textContent = libelles[c.statut] || c.statut;
+      titre.appendChild(badge);
+      carte.appendChild(titre);
+      var resume = document.createElement('p');
+      resume.textContent = c.resume;
+      carte.appendChild(resume);
+      var details = document.createElement('details');
+      var sommaire = document.createElement('summary');
+      sommaire.textContent = 'Voir la procédure';
+      var contenu = document.createElement('pre');
+      contenu.textContent = c.contenu;
+      details.appendChild(sommaire);
+      details.appendChild(contenu);
+      carte.appendChild(details);
+      var meta = document.createElement('small');
+      meta.textContent = (c.demandeOrigine ? 'Demande d’origine : ' + c.demandeOrigine + ' · ' : '') + 'Proposée le ' + c.proposeLe + ' (interface ' + c.interface + ')';
+      carte.appendChild(meta);
+      var actions = document.createElement('div');
+      actions.className = 'admin-competence-actions';
+      function bouton(texte, decision) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = texte;
+        b.addEventListener('click', function () { decisionCompetenceAdmin(c.id, decision); });
+        actions.appendChild(b);
+      }
+      if (c.statut !== 'Approuvee') bouton('Approuver', 'approuver');
+      if (c.statut !== 'Refusee') bouton(c.statut === 'Approuvee' ? 'Désactiver' : 'Refuser', 'refuser');
+      carte.appendChild(actions);
+      hote.appendChild(carte);
+    });
+  }
+
+  function decisionCompetenceAdmin(id, decision) {
+    google.script.run
+      .withSuccessHandler(chargerCompetencesAdmin)
+      .withFailureHandler(function (error) { afficherAdminToast(getAdminErrorMessage(error)); })
+      .decisionCompetenceIA(adminState.sessionToken, id, decision);
+  }
+
   function chargerEtatMotDePasseAdmin() {
     google.script.run
       .withSuccessHandler(function (defini) {
         var etat = document.getElementById('admin-mdp-etat');
-        if (etat) etat.insertAdjacentHTML('afterbegin', defini ? '<strong>Mot de passe défini.</strong> ' : '<strong>Aucun mot de passe défini pour l’instant.</strong> ');
+        if (!etat) return;
+        var statut = document.getElementById('admin-mdp-statut');   // un seul, même si la console est rechargée
+        if (!statut) {
+          statut = document.createElement('strong');
+          statut.id = 'admin-mdp-statut';
+          etat.insertBefore(document.createTextNode(' '), etat.firstChild);
+          etat.insertBefore(statut, etat.firstChild);
+        }
+        statut.textContent = defini ? 'Mot de passe défini.' : 'Aucun mot de passe défini pour l’instant.';
       })
       .withFailureHandler(function () {})
       .getMotDePasseAdminDefini(adminState.sessionToken);
@@ -3876,6 +5197,7 @@
     chargerAnnonceBoutiqueAdmin();
     chargerEtatModeTest();
     chargerEtatMotDePasseAdmin();
+    chargerCompetencesAdmin();
   }
 
   // Annonce boutique (bandeau non bloquant cote client) : meme fonctions
@@ -5192,171 +6514,595 @@
   });
 </script>
 
-  <style>
-  /* ChatGDB dans la console administrateur : bouton flottant + panneau (même esprit que côté vendeur). */
-  .admin-ia-bouton { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 9400; display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 18px 0 12px; border: 1px solid var(--theme-gold); border-radius: 999px; background: #fff; color: var(--theme-blue); font: inherit; font-weight: bold; cursor: pointer; box-shadow: 0 8px 22px rgba(0, 7, 97, .22); }
-  .admin-ia-bouton i { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--theme-blue); color: #fff; }
-  .admin-ia-bouton .chatgdb-logo { height: 34px; max-width: 40px; object-fit: contain; }
-  .admin-ia-tete-logo { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #fff; }
-  .admin-ia-tete-logo .chatgdb-logo { height: 28px; max-width: 32px; object-fit: contain; }
-  .admin-ia-tete-logo i { color: var(--theme-blue); }
-  .admin-ia-bouton:hover { background: var(--theme-sand); }
-  .admin-ia-bouton[hidden], .admin-ia-panneau[hidden] { display: none; }
-  .admin-ia-panneau { position: fixed; right: 18px; bottom: calc(78px + env(safe-area-inset-bottom)); z-index: 9500; display: flex; flex-direction: column; width: min(420px, calc(100vw - 24px)); height: min(640px, calc(100vh - 110px)); border: 1px solid var(--theme-line); border-radius: 16px; background: #fff; box-shadow: 0 22px 60px rgba(0, 7, 97, .3); overflow: hidden; }
-  .admin-ia-tete { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: var(--theme-blue); color: #fff; }
-  .admin-ia-tete strong { flex: 1 1 auto; color: #fff; font-weight: normal; font-size: 16px; }
-  .admin-ia-panneau .admin-ia-msg.is-moi, .admin-ia-panneau .admin-ia-msg.is-moi p { color: #fff; }
-  .admin-ia-panneau .admin-ia-msg.is-ia, .admin-ia-panneau .admin-ia-msg.is-ia p, .admin-ia-panneau .admin-ia-msg.is-ia li { color: var(--theme-ink); }
-  .admin-ia-tete small { color: rgba(255, 255, 255, .8); }
-  .admin-ia-tete small { display: block; opacity: .75; font-size: 11.5px; }
-  .admin-ia-tete button { min-width: 34px; min-height: 34px; border: 0; border-radius: 50%; background: transparent; color: #fff; font-size: 16px; cursor: pointer; }
-  .admin-ia-tete button:hover { background: rgba(255, 255, 255, .16); }
-  .admin-ia-fil { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; overflow-y: auto; background: var(--theme-surface); }
-  .admin-ia-msg { max-width: 92%; padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-  .admin-ia-msg.is-moi { align-self: flex-end; background: var(--theme-blue); color: #fff; border-bottom-right-radius: 4px; }
-  .admin-ia-msg.is-ia { align-self: flex-start; background: #fff; border: 1px solid var(--theme-line); border-bottom-left-radius: 4px; }
-  .admin-ia-msg.is-erreur { align-self: flex-start; background: var(--theme-danger-bg); color: var(--theme-danger); }
-  .admin-ia-msg ul { margin: 4px 0; padding-left: 20px; }
-  .admin-ia-msg p { margin: 0 0 6px; }
-  .admin-ia-msg p:last-child { margin-bottom: 0; }
-  .admin-ia-attente { align-self: flex-start; color: var(--theme-muted); font-size: 13px; }
-  .admin-ia-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .admin-ia-suggestions button { padding: 6px 11px; border: 1px solid var(--theme-line); border-radius: 999px; background: #fff; color: var(--theme-blue); font: inherit; font-size: 13px; cursor: pointer; }
-  .admin-ia-suggestions button:hover { border-color: var(--theme-gold); background: var(--theme-sand); }
-  .admin-ia-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--theme-line); background: #fff; }
-  .admin-ia-form textarea { flex: 1 1 auto; min-height: 42px; max-height: 120px; padding: 9px 12px; border: 1px solid var(--theme-line); border-radius: 12px; font: inherit; font-size: 14px; resize: none; }
-  .admin-ia-form button { min-width: 44px; border: 0; border-radius: 12px; background: var(--theme-blue); color: #fff; cursor: pointer; }
-  .admin-ia-form button:disabled { opacity: .5; cursor: default; }
-  @media (max-width: 720px) { .admin-ia-bouton span { display: none; } .admin-ia-bouton { padding: 0 9px; } .admin-ia-panneau { right: 8px; bottom: calc(74px + env(safe-area-inset-bottom)); } }
-</style>
-<script>
-  /* ===================== ChatGDB côté administrateur =====================
-     Même assistant que la console vendeur, relié à la session ADMINISTRATEUR, en LECTURE SEULE
-     (aucune proposition d'écriture : le serveur force le mode Lecture pour l'interface admin).
-     Les lignes « ACTION: ... » de l'assistant ne servent qu'à la console vendeur : elles sont retirées.
-     ======================================================================== */
+  <script>
+  /* ===================== ChatGDB : panneau COMMUN (console admin) =====================
+     Meme apparence et memes fonctions de base que le panneau de la console vendeur : memes
+     classes « seller-ia-* » (CSS_ChatGDB.html, extrait de CSS_Vendeur.html), memes bulles, meme
+     historique de conversations (feuille « ConversationsIA », partagee avec les vendeurs), memes
+     propositions d'actions a confirmer, memes images dans le fil (et DANS le texte : repere
+     [[image:N]]), meme consommation. Le mode Ecriture est disponible ; chaque action reste
+     soumise a une confirmation, comme chez le vendeur.
+
+     La console vendeur garde pour l'instant son propre code (il pilote aussi son interface :
+     visites guidees, ouverture d'ecrans...) : ce module en est le coeur reutilisable.
+
+     Utilisation : ChatGDB.init({ interface, jeton(), appeler(nom, args, ok, ko), contexte(),
+                                  logo(), actif(), surDonneesModifiees() })
+     ====================================================================================== */
   (function () {
-    var etat = { ouvert: false, enCours: false, interactionId: "", messagesGroq: [], historique: [] };
-    var SUGGESTIONS = ["Que se passe-t-il d'anormal en ce moment ?", "Résume l'activité des commandes", "Comment fonctionne la surveillance ?", "Quels articles sont en alerte de stock ?"];
+    "use strict";
+    var CFG = null;
+    var CLE_CONV = "chatgdb_admin_conversations_v1";
+    var CLE_ECRITURE = "chatgdb_admin_ecriture";
+    var CLE_PREFS = "chatgdb_admin_prefs";
+    var SUGGESTIONS = [
+      { icone: "fa-triangle-exclamation", texte: "Que se passe-t-il d'anormal en ce moment ?" },
+      { icone: "fa-box-open", texte: "Quels articles sont en alerte de stock ?" },
+      { icone: "fa-chart-line", texte: "Résume l'activité des commandes" },
+      { icone: "fa-gears", texte: "Quel est l'état du système ?" }
+    ];
+    var E = {
+      installe: false, ouvert: false, vue: "chat", enCours: false, requeteId: 0, libelle: "", debut: 0, minuterie: null,
+      transcript: [], interactionId: "", messagesIA: [], enAttente: [], propositions: [], decisions: {},
+      ecriture: false, longueur: "concise", convId: "", conso: { entree: 0, sortie: 0 }, historique: null, syncMinuterie: null, accueil: ""
+    };
 
+    function lire(cle) { try { return localStorage.getItem(cle); } catch (e) { return null; } }
+    function ecrire(cle, v) { try { localStorage.setItem(cle, v); } catch (e) { /* stockage plein ou bloque */ } }
+    function $(id) { return document.getElementById(id); }
     function echapper(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+    function messageErreur(e) { return String((e && e.message) || e || "Erreur inconnue").replace(/^Error:\s*/, ""); }
+    function appeler(nom, args, ok, ko) { CFG.appeler(nom, args, ok || function () {}, ko || function () {}); }
 
-    // Markdown minimal et SÛR : le texte est échappé d'abord, puis gras, code, listes.
-    function rendreTexte(texte) {
-      var lignes = echapper(texte).split("\n"), html = "", enListe = false;
+    // ---- Markdown minimal et SUR : tout est echappe d'abord, seuls quelques motifs sont rendus ----
+    function rendreTexte(brut) {
+      var lignes = echapper(brut).split("\n"), html = "", liste = null, tableau = false;
+      function fermer() { if (liste) { html += "</" + liste + ">"; liste = null; } if (tableau) { html += "</tbody></table>"; tableau = false; } }
+      function inline(t) {
+        return t.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
+          .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      }
       lignes.forEach(function (l) {
-        var puce = /^\s*[-*]\s+(.*)$/.exec(l);
-        if (puce) { if (!enListe) { html += "<ul>"; enListe = true; } html += "<li>" + puce[1] + "</li>"; return; }
-        if (enListe) { html += "</ul>"; enListe = false; }
+        var puce = /^\s*[-*]\s+(.*)$/.exec(l), num = /^\s*\d+[.)]\s+(.*)$/.exec(l), titre = /^#{1,6}\s*(.*)$/.exec(l);
+        if (/^\s*\|.*\|\s*$/.test(l)) {
+          if (/^\s*\|[\s:|-]+\|\s*$/.test(l)) return;
+          var cases = l.trim().replace(/^\||\|$/g, "").split("|");
+          if (!tableau) { fermer(); html += "<table><tbody>"; tableau = true; }
+          html += "<tr>" + cases.map(function (c) { return "<td>" + inline(c.trim()) + "</td>"; }).join("") + "</tr>";
+          return;
+        }
+        if (puce || num) {
+          var type = puce ? "ul" : "ol";
+          if (liste !== type) { fermer(); html += "<" + type + ">"; liste = type; }
+          html += "<li>" + inline((puce || num)[1]) + "</li>";
+          return;
+        }
+        fermer();
         if (!l.trim()) return;
-        html += "<p>" + l.replace(/^#+\s*(.*)$/, "<strong>$1</strong>") + "</p>";
+        html += titre ? "<p><strong>" + inline(titre[1]) + "</strong></p>" : "<p>" + inline(l) + "</p>";
       });
-      if (enListe) html += "</ul>";
-      return html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+      fermer();
+      return html;
     }
 
     function nettoyerReponse(texte) {
       return String(texte || "").split("\n").filter(function (l) { return !/^\s*ACTION\s*:/.test(l); }).join("\n").trim();
     }
 
-    // L'icône de ChatGDB (logo lu par le serveur, comme côté vendeur) ; à défaut, le robot générique.
-    function iconeChatGdb() {
-      var logo = (window.ADMIN_BOOTSTRAP || {}).logoChatGdb;
-      return logo && logo.indexOf("data:image/") === 0 ? '<img class="chatgdb-logo" src="' + logo + '" alt="">' : '<i class="fa-solid fa-robot" aria-hidden="true"></i>';
+    // ---- Images : reperes [[image:N]] dans le texte (meme regle que la console vendeur) ----
+    function ajouterTexteEtImages(texte, images) {
+      var valides = (Array.isArray(images) ? images : []).slice(0, 24).map(function (im) {
+        return im && /^https:\/\//i.test(String(im.url || "")) ? { url: String(im.url), legende: String(im.legende || "").slice(0, 120) } : null;
+      });
+      var utilisees = {};
+      String(texte || "").split(/\[\[image:(\d{1,2})\]\]/).forEach(function (morceau, i) {
+        if (i % 2 === 0) {
+          if (morceau.trim()) E.transcript.push({ role: "assistant", texte: morceau.trim(), frappe: true, visible: 0 });
+        } else if (valides[Number(morceau) - 1] && !utilisees[morceau]) {
+          utilisees[morceau] = true;
+          E.transcript.push({ role: "galerie", images: [valides[Number(morceau) - 1]] });
+        }
+      });
+      return valides.filter(function (im, i) { return im && !utilisees[String(i + 1)]; });
+    }
+
+    function vignette(url, legende) {
+      if (!/^https:\/\//i.test(String(url || ""))) return '<span class="seller-ia-sans-image">' + echapper(legende) + "<br>(aucune)</span>";
+      return '<a class="seller-ia-vignette" href="' + echapper(url) + '" target="_blank" rel="noopener noreferrer" title="Ouvrir en grand">' +
+        '<img src="' + echapper(url) + '" alt="' + echapper(legende) + '" loading="lazy" referrerpolicy="no-referrer"></a>';
+    }
+
+    function rendreApercus(apercus) {
+      if (!apercus || !apercus.length) return "";
+      return '<div class="seller-ia-apercus">' + apercus.slice(0, 24).map(function (a) {
+        return '<figure class="seller-ia-apercu-paire"><div class="seller-ia-apercu-images">' + vignette(a.avant, "Actuelle") +
+          '<i class="fa-solid fa-arrow-right"></i>' + vignette(a.apres, "Nouvelle") + "</div><figcaption>" + echapper(a.legende) + "</figcaption></figure>";
+      }).join("") + "</div>";
+    }
+
+    // ---- Structure du panneau (meme balisage que HTML_Vendeur.html) ----
+    function icone() {
+      var logo = CFG.logo && CFG.logo();
+      return logo && logo.indexOf("data:image/") === 0 ? '<img class="chatgdb-logo" src="' + logo + '" alt="">' : '<i class="fa-solid fa-robot"></i>';
     }
 
     function installer() {
-      if (document.getElementById("admin-ia-bouton")) return;
-      var b = document.createElement("button");
-      b.type = "button"; b.id = "admin-ia-bouton"; b.className = "admin-ia-bouton"; b.hidden = true;
-      b.setAttribute("aria-expanded", "false"); b.setAttribute("aria-controls", "admin-ia-panneau");
-      b.innerHTML = iconeChatGdb() + '<span>ChatGDB</span>';
-      b.addEventListener("click", basculer);
-      document.body.appendChild(b);
-      var p = document.createElement("aside");
-      p.id = "admin-ia-panneau"; p.className = "admin-ia-panneau"; p.hidden = true; p.setAttribute("role", "dialog"); p.setAttribute("aria-label", "ChatGDB, assistant");
-      p.innerHTML = '<header class="admin-ia-tete"><span class="admin-ia-tete-logo">' + iconeChatGdb() + '</span><strong>ChatGDB<small>Assistant · lecture seule côté administrateur</small></strong>' +
-        '<button type="button" data-a="nouveau" title="Nouvelle conversation" aria-label="Nouvelle conversation"><i class="fa-solid fa-rotate-right"></i></button>' +
-        '<button type="button" data-a="fermer" title="Fermer" aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></header>' +
-        '<div class="admin-ia-fil" id="admin-ia-fil" aria-live="polite"></div>' +
-        '<form class="admin-ia-form" id="admin-ia-form"><textarea id="admin-ia-saisie" rows="1" placeholder="Posez votre question…" aria-label="Message pour ChatGDB"></textarea>' +
-        '<button type="submit" id="admin-ia-envoyer" title="Envoyer" aria-label="Envoyer"><i class="fa-solid fa-paper-plane"></i></button></form>';
-      document.body.appendChild(p);
-      p.querySelector('[data-a="fermer"]').addEventListener("click", basculer);
-      p.querySelector('[data-a="nouveau"]').addEventListener("click", reinitialiser);
-      var saisie = p.querySelector("#admin-ia-saisie");
-      p.querySelector("#admin-ia-form").addEventListener("submit", function (e) { e.preventDefault(); envoyer(saisie.value); });
+      if (E.installe) return;
+      E.installe = true;
+      E.ecriture = lire(CLE_ECRITURE) === "1";
+      try { E.longueur = (JSON.parse(lire(CLE_PREFS) || "{}") || {}).longueur === "detaillee" ? "detaillee" : "concise"; } catch (e) { E.longueur = "concise"; }
+      var racine = document.createElement("div");
+      racine.innerHTML =
+        '<button type="button" id="ia-bouton-flottant" class="seller-ia-bouton-flottant" data-a="ouvrir" title="ChatGDB" hidden>' + icone() + "</button>" +
+        '<div id="ia-panneau" class="seller-ia-panneau" role="dialog" aria-label="ChatGDB, assistant">' +
+        '<div class="seller-ia-panneau-entete">' +
+        '<button type="button" id="ia-retour" class="seller-ia-entete-bouton" data-a="vue-chat" title="Retour à la conversation" hidden><i class="fa-solid fa-arrow-left"></i></button>' +
+        '<h2 id="ia-titre"><i class="fa-solid fa-robot"></i><span id="ia-titre-texte">ChatGDB</span></h2>' +
+        '<button type="button" id="ia-nouvelle" class="seller-ia-entete-bouton" data-a="nouvelle" title="Nouvelle conversation"><i class="fa-regular fa-pen-to-square"></i></button>' +
+        '<button type="button" id="ia-historique-bouton" class="seller-ia-entete-bouton" data-a="vue-historique" title="Conversations précédentes"><i class="fa-solid fa-clock-rotate-left"></i></button>' +
+        '<button type="button" class="seller-ia-entete-bouton" data-a="fermer" title="Fermer"><i class="fa-solid fa-xmark"></i></button></div>' +
+        '<div id="ia-chat" class="seller-ia-chat">' +
+        '<div id="ia-vue-chat" class="seller-ia-vue"><div id="ia-messages" class="seller-ia-messages"></div>' +
+        '<form id="ia-form" class="seller-ia-composeur"><textarea id="ia-input" placeholder="Écrivez à ChatGDB…" rows="1" aria-label="Message pour ChatGDB"></textarea>' +
+        '<div class="seller-ia-barre">' +
+        '<select id="ia-mode" class="seller-ia-selecteur" data-a="mode" title="Lecture : consulte seulement. Écriture : peut proposer des modifications, toujours soumises à votre confirmation.">' +
+        '<option value="lecture">Lecture</option><option value="ecriture">Écriture</option></select>' +
+        '<button type="button" id="ia-reglages-bouton" class="seller-ia-outil" data-a="vue-reglages" title="Réglages de ChatGDB"><i class="fa-solid fa-sliders"></i></button>' +
+        '<span class="seller-ia-barre-espace"></span>' +
+        '<button type="submit" id="ia-envoyer" title="Envoyer (Entrée)"><i class="fa-solid fa-paper-plane"></i></button></div></form></div>' +
+        '<div id="ia-vue-historique" class="seller-ia-vue" hidden><input type="search" id="ia-historique-recherche" class="seller-ia-recherche" placeholder="Rechercher dans vos conversations">' +
+        '<div id="ia-historique-liste" class="seller-ia-historique"></div></div>' +
+        '<div id="ia-vue-reglages" class="seller-ia-vue seller-ia-vue-reglages" hidden>' +
+        '<section class="seller-ia-reglages-section"><h3>Comportement</h3>' +
+        '<label>Longueur des réponses<select id="ia-pref-longueur"><option value="concise">Concises</option><option value="detaillee">Détaillées</option></select></label>' +
+        '<p id="ia-mode-explication" class="seller-ia-note"></p></section>' +
+        '<section class="seller-ia-reglages-section"><h3>Consommation</h3><div id="ia-consommation" class="seller-ia-consommation"></div></section>' +
+        '<section class="seller-ia-reglages-section"><h3>Compétences</h3><p class="seller-ia-note">ChatGDB peut proposer de nouvelles compétences : elles s\'approuvent dans le panneau « Compétences de ChatGDB » de la Vue d\'ensemble.</p></section>' +
+        "</div></div></div>";
+      while (racine.firstChild) document.body.appendChild(racine.firstChild);
+      $("ia-mode").value = E.ecriture ? "ecriture" : "lecture";
+      $("ia-pref-longueur").value = E.longueur;
+      var panneau = $("ia-panneau"), bouton = $("ia-bouton-flottant"), saisie = $("ia-input");
+      bouton.addEventListener("click", ouvrir);
+      panneau.addEventListener("click", clic);
+      panneau.addEventListener("change", function (e) {
+        if (e.target.id === "ia-mode") { E.ecriture = e.target.value === "ecriture"; ecrire(CLE_ECRITURE, E.ecriture ? "1" : "0"); }
+        if (e.target.id === "ia-pref-longueur") { E.longueur = e.target.value; ecrire(CLE_PREFS, JSON.stringify({ longueur: E.longueur })); }
+      });
+      $("ia-form").addEventListener("submit", function (e) { e.preventDefault(); envoyer(saisie.value); });
       saisie.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); envoyer(saisie.value); } });
-      saisie.addEventListener("input", function () { saisie.style.height = "auto"; saisie.style.height = Math.min(120, saisie.scrollHeight) + "px"; });
-      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && etat.ouvert) basculer(); });
-      accueil();
+      saisie.addEventListener("input", function () { saisie.style.height = "auto"; saisie.style.height = Math.min(140, saisie.scrollHeight) + "px"; });
+      $("ia-historique-recherche").addEventListener("input", rendreHistorique);
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && E.ouvert) fermer(); });
+      rendre();
     }
 
-    function accueil() {
-      var fil = document.getElementById("admin-ia-fil"); if (!fil) return;
-      fil.innerHTML = '<div class="admin-ia-msg is-ia"><p>Bonjour ! Je peux consulter les données de la boutique et vous expliquer la console. Ici, je ne modifie rien.</p></div>' +
-        '<div class="admin-ia-suggestions">' + SUGGESTIONS.map(function (s) { return '<button type="button">' + echapper(s) + '</button>'; }).join("") + '</div>';
-      fil.querySelectorAll(".admin-ia-suggestions button").forEach(function (b) { b.addEventListener("click", function () { envoyer(b.textContent); }); });
+    // ---- Ouverture, fermeture, vues ----
+    function ouvrir() {
+      E.ouvert = true;
+      $("ia-panneau").classList.add("is-ouvert");
+      document.body.classList.add("seller-ia-panneau-ouvert");
+      $("ia-bouton-flottant").classList.remove("a-du-nouveau");
+      afficherVue("chat");
+    }
+    function fermer() {
+      E.ouvert = false;
+      $("ia-panneau").classList.remove("is-ouvert");
+      document.body.classList.remove("seller-ia-panneau-ouvert");
+    }
+    function afficherVue(vue) {
+      E.vue = vue;
+      ["chat", "historique", "reglages"].forEach(function (v) { $("ia-vue-" + v).hidden = v !== vue; });
+      $("ia-retour").hidden = vue === "chat";
+      $("ia-historique-bouton").hidden = vue !== "chat";
+      $("ia-titre-texte").textContent = vue === "historique" ? "Conversations" : (vue === "reglages" ? "Réglages" : (titreConversation() || "ChatGDB"));
+      if (vue === "historique") { $("ia-historique-recherche").value = ""; rendreHistorique(); synchroniserListe(); }
+      else if (vue === "reglages") rendreReglages();
+      else if (window.matchMedia("(pointer: fine)").matches) $("ia-input").focus();
     }
 
-    function reinitialiser() {
-      etat.interactionId = ""; etat.messagesGroq = []; etat.historique = [];
-      accueil();
+    function clic(e) {
+      var el = e.target.closest("[data-a]");
+      if (!el) return;
+      var a = el.getAttribute("data-a"), id = el.getAttribute("data-id");
+      if (a === "fermer") fermer();
+      else if (a === "vue-chat") afficherVue("chat");
+      else if (a === "vue-historique") afficherVue("historique");
+      else if (a === "vue-reglages") afficherVue("reglages");
+      else if (a === "nouvelle") nouvelle();
+      else if (a === "suggestion") envoyer(el.getAttribute("data-t"));
+      else if (a === "confirmer") decider(id, true);
+      else if (a === "annuler") decider(id, false);
+      else if (a === "tout-confirmer") toutDecider(true);
+      else if (a === "tout-annuler") toutDecider(false);
+      else if (a === "undo") annulerApresCoup(Number(el.getAttribute("data-i")));
+      else if (a === "copier") copier(Number(el.getAttribute("data-i")));
+      else if (a === "arreter") arreter();
+      else if (a === "reprendre") reprendre(id);
+      else if (a === "supprimer") { e.stopPropagation(); supprimerConversation(id); }
     }
 
-    function basculer() {
-      etat.ouvert = !etat.ouvert;
-      document.getElementById("admin-ia-panneau").hidden = !etat.ouvert;
-      document.getElementById("admin-ia-bouton").setAttribute("aria-expanded", String(etat.ouvert));
-      if (etat.ouvert) { var s = document.getElementById("admin-ia-saisie"); if (s) s.focus(); }
+    // ---- Rendu de la conversation ----
+    function accueilHtml() {
+      if (!E.accueil) {
+        var h = new Date().getHours();
+        E.accueil = h < 5 || h >= 19 ? "Bonsoir ! Que puis-je faire pour vous ?" : "Bonjour ! Que puis-je faire pour vous ?";
+      }
+      return '<div class="seller-ia-accueil"><div class="seller-ia-accueil-logo">' + icone() + "</div>" +
+        '<p class="seller-ia-accueil-titre">' + echapper(E.accueil) + "</p>" +
+        '<div class="seller-ia-suggestions">' + SUGGESTIONS.map(function (s) {
+          return '<button type="button" data-a="suggestion" data-t="' + echapper(s.texte) + '"><i class="fa-solid ' + s.icone + '"></i><span>' + echapper(s.texte) + "</span></button>";
+        }).join("") + "</div></div>";
     }
 
-    function ajouter(classe, html) {
-      var fil = document.getElementById("admin-ia-fil");
-      var sug = fil.querySelector(".admin-ia-suggestions"); if (sug) sug.remove();
-      var d = document.createElement("div"); d.className = "admin-ia-msg " + classe; d.innerHTML = html;
-      fil.appendChild(d); fil.scrollTop = fil.scrollHeight;
-      return d;
+    function attente() {
+      var secondes = Math.max(0, Math.round((Date.now() - E.debut) / 1000));
+      return '<div class="seller-ia-attente" role="status" aria-live="polite"><span class="ia-points" aria-hidden="true"><i></i><i></i><i></i></span>' +
+        '<span class="ia-libelle">' + echapper(E.libelle || "ChatGDB réfléchit…") + (secondes >= 3 ? " " + secondes + " s" : "") + "</span>" +
+        '<button type="button" class="seller-ia-historique-action" data-a="arreter" title="Arrêter"><i class="fa-solid fa-stop"></i></button></div>';
+    }
+
+    function rendre(garderDefilement, sansAccueil) {
+      var hote = $("ia-messages");
+      if (!hote) return;
+      if (!E.transcript.length && !E.enCours) { hote.innerHTML = accueilHtml(); return; }
+      var enAttenteDecision = E.transcript.filter(function (t) { return t.role === "proposition" && !t.traitee; }).length;
+      var enteteLot = false;
+      var html = E.transcript.map(function (tour, index) {
+        if (tour.role === "proposition") {
+          var lot = "";
+          if (!tour.traitee && enAttenteDecision > 1 && !enteteLot) {
+            enteteLot = true;
+            lot = '<div class="seller-ia-lot-actions"><span>' + enAttenteDecision + ' actions proposées :</span><button type="button" class="seller-confirm-button" data-a="tout-confirmer">Tout confirmer</button><button type="button" data-a="tout-annuler">Tout annuler</button></div>';
+          }
+          var callId = (tour.action && tour.action.callId) || "";
+          var boutons = tour.traitee ? "<p><em>" + (tour.traitee === "confirmee" ? "Confirmée." : (tour.traitee === "ignoree" ? "Ignorée." : "Annulée.")) + "</em></p>"
+            : '<div class="seller-ia-proposition-actions"><button type="button" class="seller-confirm-button" data-a="confirmer" data-id="' + echapper(callId) + '"><i class="fa-solid fa-check"></i> Confirmer</button>' +
+              '<button type="button" data-a="annuler" data-id="' + echapper(callId) + '"><i class="fa-solid fa-xmark"></i> Annuler</button></div>';
+          return lot + '<div class="seller-ia-bulle role-proposition"><p><i class="fa-solid fa-triangle-exclamation"></i> L\'assistant propose une action :</p><p>' + echapper(tour.texte) + "</p>" +
+            rendreApercus(tour.action && tour.action.apercus) + boutons + "</div>";
+        }
+        if (tour.role === "action-effectuee") {
+          var undo = tour.annulation ? (tour.traitee ? "<p><em>Annulée.</em></p>" : '<div class="seller-ia-proposition-actions"><button type="button" data-a="undo" data-i="' + index + '"><i class="fa-solid fa-rotate-left"></i> Annuler cette action</button></div>') : "";
+          return '<div class="seller-ia-bulle role-assistant seller-ia-action-effectuee"><p><i class="fa-solid fa-circle-check"></i> ' + echapper(tour.texte) + "</p>" + undo + "</div>";
+        }
+        if (tour.role === "galerie") {
+          return '<div class="seller-ia-bulle role-galerie"><div class="seller-ia-galerie">' + tour.images.map(function (im) {
+            return "<figure>" + vignette(im.url, "") + (im.legende ? "<figcaption>" + echapper(im.legende) + "</figcaption>" : "") + "</figure>";
+          }).join("") + "</div></div>";
+        }
+        var classe = tour.role === "user" ? "role-user" : (tour.role === "erreur" ? "role-erreur" : "role-assistant");
+        var contenu = tour.role === "assistant" ? rendreTexte(tour.frappe ? tour.texte.slice(0, tour.visible || 0) : tour.texte) : echapper(tour.texte);
+        var actions = tour.role === "assistant" && !tour.frappe ? '<div class="seller-ia-message-actions"><button type="button" data-a="copier" data-i="' + index + '" title="Copier"><i class="fa-regular fa-copy"></i></button></div>' : "";
+        var meta = tour.role === "assistant" && !tour.frappe && tour.duree ? '<small class="seller-ia-note">' + (tour.duree / 1000).toFixed(1).replace(".", ",") + " s</small>" : "";
+        return '<div class="seller-ia-message ' + classe + '"><div class="seller-ia-bulle ' + classe + '"' + (tour.frappe ? ' data-frappe="' + index + '"' : "") + ">" + contenu + "</div>" + meta + actions + "</div>";
+      }).join("");
+      if (E.enCours) html += attente();
+      var defilement = hote.scrollTop;
+      hote.innerHTML = html;
+      hote.scrollTop = garderDefilement ? defilement : hote.scrollHeight;
+      E.transcript.forEach(function (tour, index) { if (tour.frappe) taper(index); });
+    }
+
+    // Deroule le texte en ~2 s quelle que soit sa longueur (jamais plus lent que necessaire).
+    function taper(index) {
+      var tour = E.transcript[index];
+      if (!tour || !tour.frappe || tour.frappeEnCours) return;
+      tour.frappeEnCours = true;
+      var total = tour.texte.length, pas = Math.max(4, Math.ceil(total / 80));
+      (function tic() {
+        if (!tour.frappe) return;
+        tour.visible = Math.min(total, (tour.visible || 0) + pas);
+        var hote = $("ia-messages"), bulle = hote && hote.querySelector('[data-frappe="' + index + '"]');
+        if (bulle) {
+          var enBas = hote.scrollHeight - hote.scrollTop - hote.clientHeight < 60;
+          bulle.innerHTML = rendreTexte(tour.texte.slice(0, tour.visible));
+          if (enBas) hote.scrollTop = hote.scrollHeight;
+        }
+        if (tour.visible >= total) { tour.frappe = false; tour.frappeEnCours = false; delete tour.visible; rendre(true); return; }
+        window.setTimeout(tic, 24);
+      })();
+    }
+
+    function copier(index) {
+      var t = E.transcript[index];
+      if (t && t.texte && navigator.clipboard) navigator.clipboard.writeText(t.texte).catch(function () {});
+    }
+
+    // ---- Envoi d'un message ----
+    function demarrer(libelle) {
+      E.enCours = true; E.requeteId += 1; E.libelle = libelle; E.debut = Date.now();
+      $("ia-envoyer").disabled = true;
+      window.clearInterval(E.minuterie);
+      E.minuterie = window.setInterval(function () { if (E.enCours) rendre(true); else window.clearInterval(E.minuterie); }, 1000);
+      rendre();
+      return E.requeteId;
+    }
+    function terminer() {
+      E.enCours = false; window.clearInterval(E.minuterie);
+      $("ia-envoyer").disabled = false;
+    }
+    function arreter() {
+      if (!E.enCours) return;
+      E.requeteId += 1;   // la reponse du serveur sera ignoree (il n'a rien ecrit : toute ecriture attend un clic)
+      var dernier = E.transcript[E.transcript.length - 1];
+      if (dernier && dernier.role === "user") { $("ia-input").value = dernier.texte; E.transcript.pop(); }
+      terminer(); rendre();
     }
 
     function envoyer(texte) {
       texte = String(texte || "").trim();
-      if (!texte || etat.enCours || !adminState.sessionToken) return;
-      etat.enCours = true;
-      var saisie = document.getElementById("admin-ia-saisie"); saisie.value = ""; saisie.style.height = "auto";
-      document.getElementById("admin-ia-envoyer").disabled = true;
-      ajouter("is-moi", "<p>" + echapper(texte) + "</p>");
-      var attente = document.createElement("div"); attente.className = "admin-ia-attente"; attente.textContent = "ChatGDB réfléchit…";
-      document.getElementById("admin-ia-fil").appendChild(attente);
-      var jeton = adminState.sessionToken;
-      var options = { interface: "admin", preferences: { longueur: "concise", guidage: "direct" } };
-      if (!etat.interactionId && etat.historique.length) options.historique = etat.historique.slice(-10);
-      function fin() { etat.enCours = false; attente.remove(); document.getElementById("admin-ia-envoyer").disabled = false; }
-      google.script.run
-        .withSuccessHandler(function (res) {
-          fin();
-          res = res || {};
-          etat.interactionId = res.interactionId || etat.interactionId;
-          etat.messagesGroq = (res.fournisseur === "groq" || res.fournisseur === "claude") ? (res.messagesGroq || []) : [];
-          var reponse = nettoyerReponse(res.reponse);
-          etat.historique.push("Administrateur : " + texte, "ChatGDB : " + reponse.slice(0, 500));
-          ajouter("is-ia", rendreTexte(reponse || "Je n'ai pas de réponse à cette question."));
-        })
-        .withFailureHandler(function (e) { fin(); ajouter("is-erreur", "<p>" + echapper((e && e.message) || "ChatGDB est indisponible pour le moment.") + "</p>"); })
-        .appelVendeur(jeton, "askAssistant", [jeton, texte, etat.interactionId, { interface: "administrateur", onglet: adminState.activeTab }, false, etat.messagesGroq, [], options]);
+      if (!texte || E.enCours || !CFG.jeton()) return;
+      // Un nouveau message alors que des propositions attendent : celles sans decision sont IGNOREES.
+      if (E.propositions.length) {
+        E.propositions.forEach(function (p) { if (E.decisions[p.callId] === undefined) { E.decisions[p.callId] = false; marquer(p.callId, "ignoree"); } });
+        envoyerDecisions(function () { envoyer(texte); });
+        return;
+      }
+      var saisie = $("ia-input"); saisie.value = ""; saisie.style.height = "auto";
+      E.transcript.push({ role: "user", texte: texte });
+      var id = demarrer("ChatGDB réfléchit…");
+      var enAttente = E.enAttente.slice();
+      E.enAttente = [];
+      var jeton = CFG.jeton();
+      var options = { interface: CFG.interface, preferences: { longueur: E.longueur, guidage: "direct" } };
+      if (!E.interactionId && !E.messagesIA.length && E.historique) options.historique = E.historique;
+      appeler("askAssistant", [jeton, texte, E.interactionId, CFG.contexte ? CFG.contexte() : {}, E.ecriture, E.messagesIA, enAttente, options],
+        function (res) { if (id === E.requeteId) traiter(res || {}, enAttente); },
+        function (err) {
+          if (id !== E.requeteId) return;
+          E.enAttente = enAttente.concat(E.enAttente);
+          terminer();
+          E.transcript.push({ role: "erreur", texte: messageErreur(err) });
+          rendre();
+        });
     }
 
-    // Le bouton n'apparaît qu'une fois la console ouverte (session administrateur active).
-    function surveiller() {
-      var app = document.getElementById("admin-app"), b = document.getElementById("admin-ia-bouton");
-      if (!app || !b) return;
-      var visible = !app.classList.contains("is-hidden") && !!adminState.sessionToken;
-      b.hidden = !visible;
-      if (!visible && etat.ouvert) basculer();
+    function traiter(res) {
+      terminer();
+      var duree = res.chrono && res.chrono.totalMs;
+      E.interactionId = res.interactionId || E.interactionId;
+      E.messagesIA = (res.fournisseur === "groq" || res.fournisseur === "claude") ? (res.messagesGroq || []) : [];
+      if (res.consommation) { E.conso.entree += res.consommation.entree || 0; E.conso.sortie += res.consommation.sortie || 0; }
+      (res.resultatsEnAttente || []).forEach(function (r) { E.enAttente.push(r); });
+      var avant = E.transcript.length;
+      var galerie = ajouterTexteEtImages(nettoyerReponse(res.reponse), res.imagesAffichees);
+      if (duree) {   // la duree se rattache au DERNIER texte de la reponse
+        for (var k = E.transcript.length - 1; k >= avant; k--) { if (E.transcript[k].role === "assistant") { E.transcript[k].duree = duree; break; } }
+      }
+      if (galerie.length) E.transcript.push({ role: "galerie", images: galerie });
+      if (res.imageGeneree) E.transcript.push({ role: "assistant", texte: "Une image a été générée ; ouvrez la console vendeur pour l'appliquer à une fiche." });
+      E.propositions = res.actionsProposees || [];
+      E.decisions = {};
+      E.propositions.forEach(function (p) { E.transcript.push({ role: "proposition", texte: p.resume, action: p }); });
+      if (E.transcript.length === avant) E.transcript.push({ role: "assistant", texte: "Pas de réponse." });
+      var panneau = $("ia-panneau");
+      if (!panneau.classList.contains("is-ouvert")) $("ia-bouton-flottant").classList.add("a-du-nouveau");
+      rendre();
+      sauvegarder();
     }
-    function demarrer() { installer(); surveiller(); window.setInterval(surveiller, 1000); }
+
+    // ---- Propositions d'actions (mode Ecriture) ----
+    function marquer(callId, etat) {
+      for (var i = E.transcript.length - 1; i >= 0; i--) {
+        var t = E.transcript[i];
+        if (t.role === "proposition" && t.action && t.action.callId === callId && !t.traitee) { t.traitee = etat; return; }
+      }
+    }
+    function decider(callId, accepte) {
+      if (E.decisions[callId] !== undefined) return;
+      E.decisions[callId] = accepte;
+      marquer(callId, accepte ? "confirmee" : "annulee");
+      rendre(true);
+      envoyerDecisions();
+    }
+    function toutDecider(accepte) {
+      E.propositions.forEach(function (p) { if (E.decisions[p.callId] === undefined) { E.decisions[p.callId] = accepte; marquer(p.callId, accepte ? "confirmee" : "annulee"); } });
+      rendre(true);
+      envoyerDecisions();
+    }
+    // Une fois TOUT le lot decide : un seul appel serveur, SANS modele d'IA ; le modele apprend l'issue au message suivant.
+    function envoyerDecisions(apres) {
+      var props = E.propositions;
+      if (!props.length) { if (apres) apres(); return; }
+      if (!props.every(function (p) { return E.decisions[p.callId] !== undefined; })) return;
+      var decisions = props.map(function (p) { return { outil: p.outil, callId: p.callId, arguments: p.arguments, fournisseur: p.fournisseur, accepte: E.decisions[p.callId] }; });
+      E.propositions = []; E.decisions = {};
+      decisions.filter(function (d) { return !d.accepte; }).forEach(function (d) {
+        E.enAttente.push({ outil: d.outil, callId: d.callId, fournisseur: d.fournisseur, resultat: { annule: true, message: "L'administrateur n'a pas confirme cette action, elle n'a pas ete executee." } });
+      });
+      var acceptees = decisions.filter(function (d) { return d.accepte; });
+      if (!acceptees.length) { rendre(true); if (apres) apres(); return; }
+      demarrer("Exécution en cours…");
+      appeler("confirmerActionsIA", [CFG.jeton(), decisions, E.ecriture, []], function (retour) {
+        terminer();
+        var modifie = false;
+        ((retour && retour.resultatsActions) || []).forEach(function (entree) {
+          var origine = acceptees.filter(function (d) { return d.callId === entree.callId; })[0];
+          var r = entree.resultat || {};
+          E.enAttente.push({ outil: entree.outil, callId: entree.callId, fournisseur: origine ? origine.fournisseur : "claude", resultat: r });
+          if (r.succes === false) { E.transcript.push({ role: "erreur", texte: (entree.outil || "Action") + " : " + (r.erreur || "échec inconnu") }); return; }
+          modifie = true;
+          E.transcript.push({ role: "action-effectuee", texte: r.resumeResultat || ('Action "' + entree.outil + '" exécutée.'), outil: entree.outil, annulation: r.annulation || null, traitee: false });
+        });
+        rendre(); sauvegarder();
+        if (modifie && CFG.surDonneesModifiees) CFG.surDonneesModifiees();
+        if (apres) apres();
+      }, function (err) {
+        terminer();
+        acceptees.forEach(function (d) { E.enAttente.push({ outil: d.outil, callId: d.callId, fournisseur: d.fournisseur, resultat: { succes: false, erreur: "Execution interrompue : " + messageErreur(err) } }); });
+        E.transcript.push({ role: "erreur", texte: messageErreur(err) });
+        rendre();
+      });
+    }
+    function annulerApresCoup(index) {
+      var t = E.transcript[index];
+      if (!t || !t.annulation || t.traitee || E.enCours) return;
+      t.traitee = true; rendre(true);
+      appeler("annulerActionIA", [CFG.jeton(), t.annulation.outil, t.annulation.donnees], function () {
+        if (CFG.surDonneesModifiees) CFG.surDonneesModifiees();
+      }, function (err) {
+        t.traitee = false; E.transcript.push({ role: "erreur", texte: messageErreur(err) }); rendre();
+      });
+    }
+
+    // ---- Conversations : copie locale + feuille partagee « ConversationsIA » ----
+    function lireLocal() { try { return JSON.parse(lire(CLE_CONV) || "[]") || []; } catch (e) { return []; } }
+    function titreConversation() {
+      var c = lireLocal().filter(function (x) { return x.id === E.convId; })[0];
+      return c && c.titre;
+    }
+    function allege() {
+      return E.transcript.filter(function (t) { return t.role !== "erreur"; }).map(function (t) {
+        var c = { role: t.role, texte: t.texte };
+        if (t.role === "galerie") c.images = t.images;
+        if (t.role === "proposition") { c.action = t.action; c.traitee = t.traitee || "ignoree"; }
+        if (t.role === "action-effectuee") { c.outil = t.outil; c.traitee = true; }
+        return c;
+      });
+    }
+    function sauvegarder() {
+      if (!E.transcript.some(function (t) { return t.role === "user"; })) return;
+      if (!E.convId) E.convId = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      var premier = E.transcript.filter(function (t) { return t.role === "user"; })[0];
+      var liste = lireLocal(), existante = liste.filter(function (c) { return c.id === E.convId; })[0];
+      liste = liste.filter(function (c) { return c.id !== E.convId; });
+      var conv = { id: E.convId, titre: existante && existante.titreManuel ? existante.titre : String(premier.texte).replace(/\s+/g, " ").slice(0, 60),
+        titreManuel: existante ? !!existante.titreManuel : false, cree: existante ? existante.cree : Date.now(), maj: Date.now(),
+        transcript: allege(), interactionId: E.interactionId || "", enAttente: [], conso: E.conso };
+      liste.unshift(conv);
+      ecrire(CLE_CONV, JSON.stringify(liste.slice(0, 30)));
+      window.clearTimeout(E.syncMinuterie);
+      E.syncMinuterie = window.setTimeout(function () { if (!E.enCours) appeler("enregistrerConversationIA", [CFG.jeton(), conv]); }, 4000);
+    }
+    function nouvelle() {
+      E.transcript = []; E.interactionId = ""; E.messagesIA = []; E.enAttente = []; E.propositions = []; E.decisions = {};
+      E.convId = ""; E.conso = { entree: 0, sortie: 0 }; E.historique = null; E.accueil = "";
+      afficherVue("chat"); rendre();
+    }
+    function groupeDate(t) {
+      var jours = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(t || 0).setHours(0, 0, 0, 0)) / 86400000);
+      return jours <= 0 ? "Aujourd'hui" : (jours === 1 ? "Hier" : (jours < 7 ? "7 derniers jours" : "Plus ancien"));
+    }
+    function normaliser(t) { return String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+    function rendreHistorique() {
+      var hote = $("ia-historique-liste");
+      var recherche = normaliser($("ia-historique-recherche").value);
+      var liste = lireLocal().filter(function (c) {
+        return !recherche || normaliser((c.titre || "") + " " + (c.transcript || []).map(function (t) { return t.texte || ""; }).join(" ")).indexOf(recherche) !== -1;
+      });
+      if (!liste.length) { hote.innerHTML = '<p class="seller-ia-vide">' + (recherche ? "Aucune conversation ne correspond." : "Aucune conversation pour l'instant.") + "</p>"; return; }
+      var groupe = "";
+      hote.innerHTML = liste.map(function (c) {
+        var g = groupeDate(c.maj), entete = g !== groupe ? '<h4 class="seller-ia-historique-groupe">' + echapper(g) + "</h4>" : "";
+        groupe = g;
+        var d = new Date(c.maj || 0);
+        var quand = g === "Aujourd'hui" || g === "Hier" ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+        return entete + '<div class="seller-ia-historique-item' + (c.id === E.convId ? " is-actuelle" : "") + '" role="button" tabindex="0" data-a="reprendre" data-id="' + echapper(c.id) + '">' +
+          '<span class="seller-ia-historique-titre">' + echapper(c.titre || "Conversation") + "</span>" +
+          '<span class="seller-ia-historique-date">' + echapper(quand) + "</span>" +
+          '<button type="button" class="seller-ia-historique-action" title="Supprimer" data-a="supprimer" data-id="' + echapper(c.id) + '"><i class="fa-solid fa-trash"></i></button></div>';
+      }).join("");
+    }
+    // Les conversations des autres vendeurs/administrateurs : on ne garde que le titre, le contenu se lit a l'ouverture.
+    function synchroniserListe() {
+      appeler("listerConversationsIA", [CFG.jeton()], function (serveur) {
+        var locales = lireLocal(), ids = {};
+        locales.forEach(function (c) { ids[c.id] = true; });
+        (serveur || []).forEach(function (c) { if (!ids[c.id]) locales.push({ id: c.id, titre: c.titre, titreManuel: c.titreManuel, cree: c.cree, maj: c.maj, transcript: [], distante: true }); });
+        locales.sort(function (a, b) { return (b.maj || 0) - (a.maj || 0); });
+        ecrire(CLE_CONV, JSON.stringify(locales.slice(0, 40)));
+        if (E.vue === "historique") rendreHistorique();
+      });
+    }
+    function reprendre(id) {
+      var c = lireLocal().filter(function (x) { return x.id === id; })[0];
+      if (!c) return;
+      function ouvrirConv(conv) {
+        E.transcript = (conv.transcript || []).map(function (t) { return t; });
+        E.convId = conv.id; E.interactionId = ""; E.messagesIA = []; E.enAttente = []; E.propositions = []; E.decisions = {};
+        E.conso = conv.conso || { entree: 0, sortie: 0 };
+        // Le fil du modele n'est pas conserve : un resume texte des derniers echanges est joint au prochain message.
+        E.historique = E.transcript.filter(function (t) { return t.role === "user" || t.role === "assistant"; }).slice(-10)
+          .map(function (t) { return (t.role === "user" ? "Administrateur : " : "ChatGDB : ") + String(t.texte || "").slice(0, 500); });
+        afficherVue("chat"); rendre();
+      }
+      if (c.distante || !(c.transcript || []).length) {
+        appeler("lireConversationIA", [CFG.jeton(), id], function (conv) { ouvrirConv(conv); }, function (err) { E.transcript.push({ role: "erreur", texte: messageErreur(err) }); afficherVue("chat"); rendre(); });
+      } else ouvrirConv(c);
+    }
+    function supprimerConversation(id) {
+      ecrire(CLE_CONV, JSON.stringify(lireLocal().filter(function (c) { return c.id !== id; })));
+      appeler("supprimerConversationIA", [CFG.jeton(), id]);
+      if (id === E.convId) nouvelle();
+      rendreHistorique();
+    }
+
+    // ---- Reglages : consommation et explication du mode ----
+    function formaterJetons(n) { return n >= 1e6 ? (Math.round(n / 1e5) / 10) + " M" : (n >= 1e3 ? Math.round(n / 100) / 10 + " k" : String(n)); }
+    function rendreReglages() {
+      $("ia-mode-explication").textContent = "Lecture : ChatGDB consulte les données et vous explique. Écriture : il peut aussi proposer des modifications (stocks, prix, statuts, commandes...) ; rien n'est exécuté sans votre confirmation, et chaque action est annulable juste après. Sélecteur Lecture / Écriture sous la zone de saisie.";
+      var hote = $("ia-consommation");
+      hote.innerHTML = '<div class="seller-ia-conso-ligne"><span>Cette conversation</span><strong>' + formaterJetons(E.conso.entree + E.conso.sortie) + '</strong></div><p class="seller-field-hint">Lecture de la consommation de la boutique…</p>';
+      appeler("getConsommationIA", [CFG.jeton()], function (r) {
+        r = r || {};
+        var mois = (r.mois || []).map(function (m, i) {
+          var total = (m.entree || 0) + (m.sortie || 0), plafond = i === 0 && r.plafond ? r.plafond : 0;
+          return '<div class="seller-ia-conso-ligne"><span>' + echapper(m.libelle) + "</span><strong>" + formaterJetons(total) + (plafond ? " / " + formaterJetons(plafond) : "") + "</strong><small>" + (m.appels || 0) + " question(s)</small></div>";
+        }).join("");
+        hote.innerHTML = '<div class="seller-ia-conso-ligne"><span>Cette conversation</span><strong>' + formaterJetons(E.conso.entree + E.conso.sortie) + "</strong></div>" + (mois || "");
+      }, function (err) { hote.innerHTML = '<p class="seller-field-hint">' + echapper(messageErreur(err)) + "</p>"; });
+    }
+
+    // ---- Point d'entree ----
+    function init(cfg) {
+      CFG = cfg;
+      installer();
+      function surveiller() {
+        var visible = !!(CFG.actif && CFG.actif());
+        var b = $("ia-bouton-flottant");
+        if (b) b.hidden = !visible;
+        if (!visible && E.ouvert) fermer();
+      }
+      surveiller();
+      window.setInterval(surveiller, 1000);
+    }
+    window.ChatGDB = { init: init, ouvrir: function () { if (CFG && !E.ouvert) ouvrir(); }, fermer: fermer };
+  })();
+</script>
+
+  <style>
+  /* [hidden] doit l'emporter sur les « display » des regles du panneau commun. */
+  .seller-ia-bouton-flottant[hidden], .seller-ia-panneau-entete [hidden], .seller-ia-vue[hidden] { display: none !important; }
+  /* Largeur du panneau : variable definie dans CSS_Vendeur.html cote vendeur. */
+  :root { --ia-panneau-largeur: min(420px, 100vw); }
+</style>
+<script>
+  /* ChatGDB cote administrateur : adaptateur du panneau COMMUN (SCRIPT_ChatGDB.html).
+     Meme panneau que la console vendeur ; session ADMINISTRATEUR ; mode Ecriture possible
+     (chaque action reste soumise a confirmation). Tous les appels passent par appelVendeur,
+     qui accepte le jeton de session administrateur. */
+  (function () {
+    function demarrer() {
+      if (!window.ChatGDB) return;
+      window.ChatGDB.init({
+        interface: "admin",
+        jeton: function () { return adminState.sessionToken; },
+        appeler: function (nom, args, ok, ko) {
+          google.script.run.withSuccessHandler(ok).withFailureHandler(ko).appelVendeur(adminState.sessionToken, nom, args);
+        },
+        contexte: function () { return { interface: "administrateur", onglet: adminState.activeTab }; },
+        logo: function () { return (window.ADMIN_BOOTSTRAP || {}).logoChatGdb; },
+        actif: function () {
+          var app = document.getElementById("admin-app");
+          return !!app && !app.classList.contains("is-hidden") && !!adminState.sessionToken;
+        },
+        surDonneesModifiees: function () { if (typeof chargerAdministration === "function") chargerAdministration(); }
+      });
+      window.ouvrirChatGdbAdmin_ = function () { window.ChatGDB.ouvrir(); };
+    }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer); else demarrer();
-    window.ouvrirChatGdbAdmin_ = function () { if (!etat.ouvert) basculer(); };
   })();
 </script>
 

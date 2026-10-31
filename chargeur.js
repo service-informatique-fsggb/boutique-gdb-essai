@@ -16,7 +16,7 @@
 */
 (function () {
   var EXEC = "https://script.google.com/macros/s/AKfycbwW5GeOkiFxzGFXulOqIjNqGaZEMEk8QnHiHujMLhS59MN09ECAXTZITMmCuFcn3aLD/exec";
-  var PAGES = {"client":"pages/client.ee29ca8f79.html","vendeur":"pages/vendeur.0d04357d90.html","admin":"pages/admin.420e1bd765.html","test":"pages/test.8ba51a1a3c.html","paiement":"pages/paiement.2076f9aa7b.html","reception":"pages/reception.41e2612186.html","colis":"pages/colis.efbc63fd6e.html","rupture":"pages/rupture.560e4175a2.html","avis":"pages/avis.02b35c78a7.html","vendeur-autotest":"pages/vendeur-autotest.bd3ecda6c4.html"};
+  var PAGES = {"client":"pages/client.ee29ca8f79.html","vendeur":"pages/vendeur.c236b1b0ed.html","admin":"pages/admin.8f08c3084a.html","test":"pages/test.fc4c3bee8e.html","paiement":"pages/paiement.2076f9aa7b.html","reception":"pages/reception.41e2612186.html","colis":"pages/colis.efbc63fd6e.html","rupture":"pages/rupture.560e4175a2.html","avis":"pages/avis.02b35c78a7.html","vendeur-autotest":"pages/vendeur-autotest.f45e737d21.html"};
   var RACINE = new URL(".", document.currentScript.src).href;
   var CACHE_GABARITS = "boutique-gdb-gabarits";
   var CLE_DONNEES = "boutique-gdb-donnees-";   // + nom de l'instantane

@@ -12766,6 +12766,16 @@
       </section>
 
       <section class="test-card">
+        <h2><i class="fa-solid fa-robot"></i> Assistant Claude (ChatGDB)</h2>
+        <p>Pose une question qui exige un outil, à Haiku (réflexion faible puis moyenne) et à Sonnet, et affiche pour chacun la durée, les jetons consommés et le coût estimé. Sert à vérifier la clé et à choisir le modèle le moins cher qui suffit.</p>
+        <span class="test-impact"><i class="fa-solid fa-coins"></i> Quelques centièmes de centime d'API</span>
+        <div class="test-actions">
+          <button type="button" class="seller-tabs" onclick="lancerTestClaude()"><i class="fa-solid fa-play"></i> Tester Claude</button>
+        </div>
+        <pre id="test-output-claude" class="test-output"></pre>
+      </section>
+
+      <section class="test-card">
         <h2><i class="fa-solid fa-file-pdf"></i> Bordereau fictif</h2>
         <p>Génère un bordereau de commande à partir de données inventées, pour vérifier la mise en page du modèle et l’accès au dossier Drive.</p>
         <!-- Un vrai document est créé dans le dossier de production : il faudra
@@ -12945,6 +12955,15 @@
       .createTestOrderDocument();
   }
 
+  function lancerTestClaude() {
+    ecrireSortieTest("test-output-claude", "Test en cours (3 modèles, ~20 s)…");
+    google.script.run
+      .withSuccessHandler(function (data) { ecrireSortieTest("test-output-claude", data); })
+      .withFailureHandler(function (error) { ecrireSortieTest("test-output-claude", messageErreurTest(error), true); })
+      .testerClaudeIA();
+  }
+
+  window.lancerTestClaude = lancerTestClaude;
   window.lancerDiagnostic = lancerDiagnostic;
   window.genererBordereauTest = genererBordereauTest;
 
