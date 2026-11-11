@@ -11,6 +11,7 @@
 #    toutes les 20 min (~2200 min/mois) ne sert que tant qu'Apps Script ne
 #    previent pas GitHub : variable du depot DECLENCHEUR_GOOGLE = oui pour
 #    ne garder que le passage toutes les 6 h.
+# VERSION D'ESSAI : pas de passage périodique (aucune tâche récurrente) ; publication à chaque envoi et à la demande.
 name: Publier la boutique
 
 on:
@@ -18,9 +19,6 @@ on:
     branches: [main]
   repository_dispatch:
     types: [donnees-modifiees]
-  schedule:
-    - cron: "*/20 * * * *"
-    - cron: "7 */6 * * *"
   workflow_dispatch:
 
 permissions:

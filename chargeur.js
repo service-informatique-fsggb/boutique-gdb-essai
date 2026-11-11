@@ -16,13 +16,13 @@
 */
 (function () {
   var EXEC = "https://script.google.com/macros/s/AKfycbwW5GeOkiFxzGFXulOqIjNqGaZEMEk8QnHiHujMLhS59MN09ECAXTZITMmCuFcn3aLD/exec";
-  var PAGES = {"client":"pages/client.ee29ca8f79.html","vendeur":"pages/vendeur.c236b1b0ed.html","admin":"pages/admin.8f08c3084a.html","test":"pages/test.fc4c3bee8e.html","paiement":"pages/paiement.2076f9aa7b.html","reception":"pages/reception.41e2612186.html","colis":"pages/colis.efbc63fd6e.html","rupture":"pages/rupture.560e4175a2.html","avis":"pages/avis.02b35c78a7.html","vendeur-autotest":"pages/vendeur-autotest.f45e737d21.html"};
+  var PAGES = {"client":"pages/client.3a62b01d94.html","vendeur":"pages/vendeur.c7e1bc5f9a.html","admin":"pages/admin.25af341880.html","paiement":"pages/paiement.85ed62a9e4.html","reception":"pages/reception.c4c3b2ca05.html","colis":"pages/colis.8248129626.html","rupture":"pages/rupture.15577e7287.html","avis":"pages/avis.702d13e531.html"};
   var RACINE = new URL(".", document.currentScript.src).href;
   var CACHE_GABARITS = "boutique-gdb-gabarits";
   var CLE_DONNEES = "boutique-gdb-donnees-";   // + nom de l'instantane
   var DUREE_MAX = 7 * 86400000;
   var PAGE_DU_FICHIER = {
-    HTML_Main: "client", HTML_Vendeur: "vendeur", HTML_Admin: "admin", "tests/HTML_Test": "test",
+    HTML_Main: "client", HTML_Vendeur: "vendeur", HTML_Admin: "admin",
     HTML_Paiement: "paiement", HTML_Reception: "reception", HTML_Colis: "colis",
     HTML_Rupture: "rupture", HTML_Avis: "avis"
   };
@@ -47,14 +47,14 @@
     if (!mode && params.p) mode = "colis";
     mode = mode.toLowerCase();
     if (mode === "calques") mode = "vendeur";
-    if (mode === "vendeur") return params.autotest === "1" ? "vendeur-autotest" : "vendeur";
-    return PAGES[mode] && mode !== "vendeur-autotest" ? mode : "client";
+    if (mode === "vendeur") return "vendeur";
+    return PAGES[mode] && mode !== "test" ? mode : "client";
   }
 
   function pageDeLaReponse(reponse) {
     var page = PAGE_DU_FICHIER[reponse.fichier];
     if (!page) throw new Error("page inconnue : " + reponse.fichier);
-    return page === "vendeur" && reponse.autotest ? "vendeur-autotest" : page;
+    return page;
   }
 
   // ----- Gabarits : nom unique par contenu, gardes sans limite de duree -----

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><script>
   // Boutique ouverte par le chargeur anonyme (voir BACK_AppelsAnonymes.js) :
   // la page n'est PAS servie par HtmlService, google.script.run n'existe donc
@@ -143,6 +143,46 @@
       }
     };
   })();
+
+  // Bouton « Se connecter avec Google » (même rendu partout). L'adresse vient du serveur (getConfigConnexionGoogle) : navigation
+  // vers Google dans la fenêtre entière (target _top), retour sur la boutique déjà connecté.
+  function gdbBoutonGoogleHtml_(url, texte) {
+    return '<a class="gdb-bouton-google" target="_top" rel="noopener" href="' + String(url).replace(/"/g, "&quot;") + '">' +
+      '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.5 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>' +
+      '<span>' + (texte || "Se connecter avec Google") + '</span></a>';
+  }
+
+  // Page servie par Apps Script lui-même (adresse « …googleusercontent.com ») : l'origine n'est pas déclarable chez Google ;
+  // sur le domaine de la boutique (boutique.fsggb.fr) elle l'est.
+  function gdbDansBacASableGoogle_() { try { return /\.googleusercontent\.com$/.test(location.hostname); } catch (e) { return true; } }
+
+  // Bouton Google « officiel » (Google Identity Services) : sans secret, même ID que les autres applications. surJeton(jetonIdentité).
+  // auto = true : connexion AUTOMATIQUE si le navigateur n'a qu'un compte Google déjà autorisé pour cette application (Google One Tap) ;
+  // s'il y en a plusieurs, Google propose le choix ; le bouton reste affiché dans tous les cas.
+  function gdbBoutonGis_(hote, clientId, surJeton, auto) {
+    if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+      var sc = document.createElement("script"); sc.src = "https://accounts.google.com/gsi/client"; sc.async = true; document.head.appendChild(sc);
+    }
+    var essais = 0, t = setInterval(function () {
+      essais++;
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        clearInterval(t);
+        try {
+          window.google.accounts.id.initialize({ client_id: clientId, auto_select: !!auto, cancel_on_tap_outside: false, use_fedcm_for_prompt: true, callback: function (r) { if (r && r.credential) surJeton(r.credential); } });
+          window.google.accounts.id.renderButton(hote, { theme: "outline", size: "large", width: 280, text: "signin_with", locale: "fr" });
+          hote.hidden = false;
+          if (auto) { try { window.google.accounts.id.prompt(); } catch (e) { /* le bouton reste disponible */ } }
+        } catch (e) { hote.hidden = true; }
+      } else if (essais > 25) clearInterval(t);
+    }, 200);
+  }
+
+  // Choisit le bon moyen : GIS sur le domaine de la boutique, lien (flux avec secret) dans une page Apps Script, rien sinon.
+  function gdbAfficherConnexionGoogle_(hote, config, role, surJeton, auto) {
+    if (!hote || !config || !config.clientId) return;
+    if (!gdbDansBacASableGoogle_() || config.gisBacASable) { gdbBoutonGis_(hote, config.clientId, surJeton, auto); return; }
+    if (config.actif && config.urls && config.urls[role]) { hote.innerHTML = gdbBoutonGoogleHtml_(config.urls[role], "Se connecter avec Google"); hote.hidden = false; }
+  }
 </script>
 
   <base target="_top">
@@ -2391,74 +2431,82 @@
 </style>
   <style>
     body { display: grid; place-items: center; min-height: 100vh; padding: 16px; box-sizing: border-box; }
-    .rupture { width: min(460px, 100%); padding: 26px 22px; text-align: center; background: var(--theme-white); border: 1px solid var(--theme-line); border-radius: 16px; box-shadow: 0 18px 48px rgba(0, 7, 97, 0.12); }
-    .rupture img { width: 64px; height: 64px; object-fit: contain; }
-    .rupture h1 { margin: 10px 0 6px; color: var(--theme-blue); font-size: 21px; }
-    .rupture p { margin: 8px 0; color: var(--theme-muted); font-size: 15px; line-height: 1.5; }
-    .rupture .article { padding: 10px 12px; color: var(--theme-blue); background: var(--theme-sand); border-radius: 10px; font-weight: bold; }
-    .rupture .icone { margin: 8px 0; color: var(--theme-success); font-size: 44px; }
-    .rupture .choix { display: grid; gap: 10px; margin-top: 16px; }
-    .rupture .choix button { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 12px; padding: 12px 14px; color: var(--theme-blue); text-align: left; background: #fff; border: 2px solid var(--theme-line); border-radius: 12px; font: inherit; cursor: pointer; }
-    .rupture .choix button:hover:not(:disabled) { border-color: var(--theme-blue); }
-    .rupture .choix button i { font-size: 20px; text-align: center; }
-    .rupture .choix button strong { display: block; font-size: 15px; }
-    .rupture .choix button small { color: var(--theme-muted); font-size: 12px; line-height: 1.35; }
-    .rupture .choix button.is-choisi { border-color: var(--theme-success); background: #f0f9f2; }
+    .reception { width: min(420px, 100%); padding: 28px 24px; text-align: center; background: var(--theme-white); border: 1px solid var(--theme-line); border-radius: 16px; box-shadow: 0 18px 48px rgba(0, 7, 97, 0.12); }
+    .reception img { width: 72px; height: 72px; object-fit: contain; }
+    .reception h1 { margin: 10px 0 6px; color: var(--theme-blue); font-size: 22px; }
+    .reception p { margin: 8px 0; color: var(--theme-muted); font-size: 15px; line-height: 1.5; }
+    .reception .icone { font-size: 46px; color: var(--theme-success); margin: 8px 0; }
+    .reception button, .reception a.bouton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 50px; margin-top: 14px; color: #fff; background: var(--theme-blue); border: 0; border-radius: 10px; font: bold 16px Georgia, serif; text-decoration: none; cursor: pointer; }
+    .reception a.bouton.secondaire, .reception button.secondaire { color: var(--theme-blue); background: var(--theme-sand); }
+    .reception a.lien-discret { display: block; margin-top: 16px; color: var(--theme-muted); font-size: 13px; text-decoration: underline; }
     .erreur { color: #9a2530 !important; }
   </style>
-  <script>window.RUPTURE = __BOOTSTRAP_JSON__;</script>
+  <script>window.RECEPTION = __BOOTSTRAP_JSON__;</script>
 </head>
 <body>
-  <main class="rupture" id="rupture"></main>
+  <main class="reception" id="reception"></main>
   <script>
     (function () {
-      var r = window.RUPTURE || {};
-      var hote = document.getElementById('rupture');
+      var r = window.RECEPTION || {};
+      var hote = document.getElementById('reception');
       var logo = '<img src="https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w200" alt="Boutique GDB">';
       function echapper(v) { return String(v || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-      function euros(n) { return Number(n || 0).toFixed(2).replace('.', ',') + ' €'; }
-      var PHRASES = {
-        rembourser: 'Vous serez remboursé(e) : la boutique effectue le remboursement et vous prévient.',
-        avoir: 'Vous recevrez un avoir, déduit automatiquement de votre prochaine commande.',
-        attendre: 'Nous vous enverrons l\'article dès qu\'il sera réapprovisionné.'
-      };
-      function merci(choix) {
-        hote.innerHTML = logo + '<div class="icone"><i class="fa-solid fa-circle-check"></i></div><h1>C\'est noté, merci !</h1><p>' + echapper(PHRASES[choix] || '') + '</p>' +
-          '<p>Vous pouvez fermer cette page. Un changement d\'avis ? Rouvrez le lien de l\'e-mail tant que la boutique n\'a pas traité votre demande.</p>';
+      function merci(lienAvis) {
+        hote.innerHTML = logo + '<div class="icone"><i class="fa-solid fa-circle-check"></i></div><h1>Merci !</h1>' +
+          '<p>La réception de votre commande <strong>' + echapper(r.reference) + '</strong> est confirmée.</p>' +
+          (lienAvis ? '<a class="bouton secondaire" href="' + echapper(lienAvis) + '"><i class="fa-solid fa-star"></i> Donner mon avis sur les articles</a>' : '');
       }
       if (!r.valide) {
-        hote.innerHTML = logo + '<h1>Lien invalide</h1><p class="erreur">Ce lien ne correspond à aucune demande. Utilisez celui de l\'e-mail reçu.</p>';
+        hote.innerHTML = logo + '<h1>Lien invalide</h1><p class="erreur">Ce QR code ne correspond à aucune commande. Vérifiez qu\'il provient bien de votre colis.</p>';
         return;
       }
-      if (r.cloture) {
-        hote.innerHTML = logo + '<h1>Demande déjà traitée</h1><p>La boutique a déjà donné suite à cette demande (commande ' + echapper(r.reference) + '). Pour toute question, répondez à l\'e-mail reçu.</p>';
+      if (r.annulee) {
+        hote.innerHTML = logo + '<h1>Commande annulée</h1><p>La commande ' + echapper(r.reference) + ' a été annulée.</p>';
         return;
       }
-      hote.innerHTML = logo + '<h1>Article en rupture de stock</h1>' +
-        '<p>Commande <strong>' + echapper(r.reference) + '</strong> — désolés, cet article n\'est pas disponible pour le moment :</p>' +
-        '<p class="article">' + echapper(r.article) + ' × ' + echapper(r.quantite) + ' · ' + euros(r.montant) + '</p>' +
-        '<p>Que préférez-vous ?</p>' +
-        '<div class="choix">' +
-        '<button type="button" data-choix="rembourser"><i class="fa-solid fa-money-bill-transfer"></i><span><strong>Être remboursé(e)</strong><small>Le vendeur vous rembourse ' + euros(r.montant) + '.</small></span></button>' +
-        '<button type="button" data-choix="avoir"><i class="fa-solid fa-ticket"></i><span><strong>Recevoir un avoir</strong><small>' + euros(r.montant) + ' déduits de votre prochaine commande.</small></span></button>' +
-        '<button type="button" data-choix="attendre"><i class="fa-solid fa-truck-ramp-box"></i><span><strong>Recevoir l\'article plus tard</strong><small>Envoi dès que l\'article est réapprovisionné.</small></span></button>' +
-        '</div><p class="erreur" id="erreur" hidden></p>';
-      var courant = r.choix;
-      if (courant) { var b = hote.querySelector('[data-choix="' + courant + '"]'); if (b) b.classList.add('is-choisi'); }
-      hote.querySelectorAll('button[data-choix]').forEach(function (bouton) {
-        bouton.addEventListener('click', function () {
-          hote.querySelectorAll('button[data-choix]').forEach(function (b) { b.disabled = true; });
+      if (r.dejaLivree) { merci(''); return; }
+
+      function confirmer(bouton) {
+        if (bouton) bouton.disabled = true;
+        google.script.run
+          .withSuccessHandler(function (res) { merci(res && res.lienAvis); })
+          .withFailureHandler(function (e) {
+            if (bouton) bouton.disabled = false;
+            var p = document.getElementById('erreur');
+            if (p) { p.textContent = (e && e.message) || 'Erreur, réessayez.'; p.hidden = false; }
+          })
+          .confirmerReceptionColis(r.reference, r.jeton || '');
+      }
+
+      // Lien "mon colis n'est pas arrivé" (envoyé par e-mail, jamais sur le
+      // colis lui-même) : AUCUNE confirmation de réception ici, seulement un
+      // signalement au vendeur.
+      if (r.probleme) {
+        hote.innerHTML = logo + '<h1>Votre colis n\'est pas arrivé ?</h1>' +
+          '<p>Prévenez la boutique en un geste : nous vérifierons le suivi et vous recontacterons si besoin.</p>' +
+          '<button type="button" id="signaler"><i class="fa-solid fa-triangle-exclamation"></i> Signaler que mon colis n\'est pas arrivé</button>' +
+          '<a class="lien-discret" id="pourtant-recu" href="#">En fait, je l\'ai bien reçu</a>' +
+          '<p class="erreur" id="erreur" hidden></p>';
+        document.getElementById('signaler').addEventListener('click', function () {
+          var bouton = this;
+          bouton.disabled = true;
           google.script.run
-            .withSuccessHandler(function () { merci(bouton.getAttribute('data-choix')); })
-            .withFailureHandler(function (e) {
-              hote.querySelectorAll('button[data-choix]').forEach(function (b) { b.disabled = false; });
-              var p = document.getElementById('erreur');
-              p.textContent = (e && e.message) || 'Erreur, réessayez.';
-              p.hidden = false;
+            .withSuccessHandler(function () {
+              hote.innerHTML = logo + '<div class="icone"><i class="fa-solid fa-circle-check"></i></div><h1>C\'est noté</h1><p>La boutique a été prévenue pour la commande ' + echapper(r.reference) + ' et reviendra vers vous rapidement.</p>';
             })
-            .choisirOptionRupture(r.ru, bouton.getAttribute('data-choix'));
+            .withFailureHandler(function (e) { bouton.disabled = false; var p = document.getElementById('erreur'); p.textContent = (e && e.message) || 'Erreur, réessayez.'; p.hidden = false; })
+            .signalerColisNonRecu(r.reference, r.jeton || '');
         });
-      });
+        document.getElementById('pourtant-recu').addEventListener('click', function (e) { e.preventDefault(); confirmer(null); });
+        return;
+      }
+
+      // Cas normal (QR du bordereau, glissé dans le colis) : UN SEUL geste.
+      hote.innerHTML = logo + '<h1>Votre colis est arrivé ?</h1>' +
+        '<p>' + (r.prenom ? 'Bonjour ' + echapper(r.prenom) + ', c' : 'C') + 'onfirmez la réception de la commande <strong>' + echapper(r.reference) + '</strong> en un seul geste.</p>' +
+        '<button type="button" id="confirmer"><i class="fa-solid fa-box-open"></i> Je confirme la réception</button>' +
+        '<p class="erreur" id="erreur" hidden></p>';
+      document.getElementById('confirmer').addEventListener('click', function () { confirmer(this); });
     })();
   </script>
 </body>

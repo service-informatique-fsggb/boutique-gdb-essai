@@ -1,5 +1,9 @@
 <!DOCTYPE html>
-<html>
+<!-- Page LECTURE SEULE ouverte par le QR code de l'ETIQUETTE (colle sur le
+     colis) : destinee a un transporteur/la Poste qui a besoin de retrouver
+     les informations d'acheminement sans ouvrir le colis. Aucune action
+     possible ici (voir HTML_Reception.html pour la confirmation client). -->
+<html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><script>
   // Boutique ouverte par le chargeur anonyme (voir BACK_AppelsAnonymes.js) :
   // la page n'est PAS servie par HtmlService, google.script.run n'existe donc
@@ -143,6 +147,46 @@
       }
     };
   })();
+
+  // Bouton « Se connecter avec Google » (même rendu partout). L'adresse vient du serveur (getConfigConnexionGoogle) : navigation
+  // vers Google dans la fenêtre entière (target _top), retour sur la boutique déjà connecté.
+  function gdbBoutonGoogleHtml_(url, texte) {
+    return '<a class="gdb-bouton-google" target="_top" rel="noopener" href="' + String(url).replace(/"/g, "&quot;") + '">' +
+      '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.5 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>' +
+      '<span>' + (texte || "Se connecter avec Google") + '</span></a>';
+  }
+
+  // Page servie par Apps Script lui-même (adresse « …googleusercontent.com ») : l'origine n'est pas déclarable chez Google ;
+  // sur le domaine de la boutique (boutique.fsggb.fr) elle l'est.
+  function gdbDansBacASableGoogle_() { try { return /\.googleusercontent\.com$/.test(location.hostname); } catch (e) { return true; } }
+
+  // Bouton Google « officiel » (Google Identity Services) : sans secret, même ID que les autres applications. surJeton(jetonIdentité).
+  // auto = true : connexion AUTOMATIQUE si le navigateur n'a qu'un compte Google déjà autorisé pour cette application (Google One Tap) ;
+  // s'il y en a plusieurs, Google propose le choix ; le bouton reste affiché dans tous les cas.
+  function gdbBoutonGis_(hote, clientId, surJeton, auto) {
+    if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+      var sc = document.createElement("script"); sc.src = "https://accounts.google.com/gsi/client"; sc.async = true; document.head.appendChild(sc);
+    }
+    var essais = 0, t = setInterval(function () {
+      essais++;
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        clearInterval(t);
+        try {
+          window.google.accounts.id.initialize({ client_id: clientId, auto_select: !!auto, cancel_on_tap_outside: false, use_fedcm_for_prompt: true, callback: function (r) { if (r && r.credential) surJeton(r.credential); } });
+          window.google.accounts.id.renderButton(hote, { theme: "outline", size: "large", width: 280, text: "signin_with", locale: "fr" });
+          hote.hidden = false;
+          if (auto) { try { window.google.accounts.id.prompt(); } catch (e) { /* le bouton reste disponible */ } }
+        } catch (e) { hote.hidden = true; }
+      } else if (essais > 25) clearInterval(t);
+    }, 200);
+  }
+
+  // Choisit le bon moyen : GIS sur le domaine de la boutique, lien (flux avec secret) dans une page Apps Script, rien sinon.
+  function gdbAfficherConnexionGoogle_(hote, config, role, surJeton, auto) {
+    if (!hote || !config || !config.clientId) return;
+    if (!gdbDansBacASableGoogle_() || config.gisBacASable) { gdbBoutonGis_(hote, config.clientId, surJeton, auto); return; }
+    if (config.actif && config.urls && config.urls[role]) { hote.innerHTML = gdbBoutonGoogleHtml_(config.urls[role], "Se connecter avec Google"); hote.hidden = false; }
+  }
 </script>
 
   <base target="_top">
@@ -2390,83 +2434,42 @@
   }
 </style>
   <style>
-    body { display: grid; place-items: center; min-height: 100vh; padding: 16px; box-sizing: border-box; }
-    .reception { width: min(420px, 100%); padding: 28px 24px; text-align: center; background: var(--theme-white); border: 1px solid var(--theme-line); border-radius: 16px; box-shadow: 0 18px 48px rgba(0, 7, 97, 0.12); }
-    .reception img { width: 72px; height: 72px; object-fit: contain; }
-    .reception h1 { margin: 10px 0 6px; color: var(--theme-blue); font-size: 22px; }
-    .reception p { margin: 8px 0; color: var(--theme-muted); font-size: 15px; line-height: 1.5; }
-    .reception .icone { font-size: 46px; color: var(--theme-success); margin: 8px 0; }
-    .reception button, .reception a.bouton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 50px; margin-top: 14px; color: #fff; background: var(--theme-blue); border: 0; border-radius: 10px; font: bold 16px Georgia, serif; text-decoration: none; cursor: pointer; }
-    .reception a.bouton.secondaire, .reception button.secondaire { color: var(--theme-blue); background: var(--theme-sand); }
-    .reception a.lien-discret { display: block; margin-top: 16px; color: var(--theme-muted); font-size: 13px; text-decoration: underline; }
-    .erreur { color: #9a2530 !important; }
+    body { display: grid; place-items: start center; min-height: 100vh; padding: 16px; box-sizing: border-box; }
+    .colis { width: min(480px, 100%); padding: 24px; background: var(--theme-white); border: 1px solid var(--theme-line); border-radius: 16px; box-shadow: 0 18px 48px rgba(0, 7, 97, 0.12); }
+    .colis-entete { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .colis-entete img { width: 44px; height: 44px; object-fit: contain; }
+    .colis h1 { margin: 0; color: var(--theme-blue); font-size: 18px; }
+    .colis-bloc { margin-bottom: 14px; padding: 12px 14px; background: var(--theme-bg, #f7f8ff); border-radius: 10px; }
+    .colis-bloc h2 { margin: 0 0 4px; color: var(--theme-gold, #c8a24a); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .colis-bloc p { margin: 0; font-size: 15px; line-height: 1.5; }
+    .colis-contenu { display: flex; flex-direction: column; gap: 4px; }
+    .colis-contenu span { font-size: 13px; }
+    .erreur { color: #9a2530; }
   </style>
-  <script>window.RECEPTION = __BOOTSTRAP_JSON__;</script>
+  <script>window.MANIFESTE = __BOOTSTRAP_JSON__;</script>
 </head>
 <body>
-  <main class="reception" id="reception"></main>
+  <main class="colis" id="colis"></main>
   <script>
     (function () {
-      var r = window.RECEPTION || {};
-      var hote = document.getElementById('reception');
-      var logo = '<img src="https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w200" alt="Boutique GDB">';
+      var m = window.MANIFESTE || {};
+      var hote = document.getElementById('colis');
       function echapper(v) { return String(v || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-      function merci(lienAvis) {
-        hote.innerHTML = logo + '<div class="icone"><i class="fa-solid fa-circle-check"></i></div><h1>Merci !</h1>' +
-          '<p>La réception de votre commande <strong>' + echapper(r.reference) + '</strong> est confirmée.</p>' +
-          (lienAvis ? '<a class="bouton secondaire" href="' + echapper(lienAvis) + '"><i class="fa-solid fa-star"></i> Donner mon avis sur les articles</a>' : '');
-      }
-      if (!r.valide) {
-        hote.innerHTML = logo + '<h1>Lien invalide</h1><p class="erreur">Ce QR code ne correspond à aucune commande. Vérifiez qu\'il provient bien de votre colis.</p>';
+      var logo = '<img src="https://drive.google.com/thumbnail?id=1FR8lKfSS-20CdkOoz4Sof3axGMiInerq&sz=w120" alt="">';
+      if (!m.valide) {
+        hote.innerHTML = '<div class="colis-entete">' + logo + '<h1>Colis inconnu</h1></div><p class="erreur">Cette référence ne correspond à aucune commande.</p>';
         return;
       }
-      if (r.annulee) {
-        hote.innerHTML = logo + '<h1>Commande annulée</h1><p>La commande ' + echapper(r.reference) + ' a été annulée.</p>';
-        return;
-      }
-      if (r.dejaLivree) { merci(''); return; }
-
-      function confirmer(bouton) {
-        if (bouton) bouton.disabled = true;
-        google.script.run
-          .withSuccessHandler(function (res) { merci(res && res.lienAvis); })
-          .withFailureHandler(function (e) {
-            if (bouton) bouton.disabled = false;
-            var p = document.getElementById('erreur');
-            if (p) { p.textContent = (e && e.message) || 'Erreur, réessayez.'; p.hidden = false; }
-          })
-          .confirmerReceptionColis(r.reference, r.jeton || '');
-      }
-
-      // Lien "mon colis n'est pas arrivé" (envoyé par e-mail, jamais sur le
-      // colis lui-même) : AUCUNE confirmation de réception ici, seulement un
-      // signalement au vendeur.
-      if (r.probleme) {
-        hote.innerHTML = logo + '<h1>Votre colis n\'est pas arrivé ?</h1>' +
-          '<p>Prévenez la boutique en un geste : nous vérifierons le suivi et vous recontacterons si besoin.</p>' +
-          '<button type="button" id="signaler"><i class="fa-solid fa-triangle-exclamation"></i> Signaler que mon colis n\'est pas arrivé</button>' +
-          '<a class="lien-discret" id="pourtant-recu" href="#">En fait, je l\'ai bien reçu</a>' +
-          '<p class="erreur" id="erreur" hidden></p>';
-        document.getElementById('signaler').addEventListener('click', function () {
-          var bouton = this;
-          bouton.disabled = true;
-          google.script.run
-            .withSuccessHandler(function () {
-              hote.innerHTML = logo + '<div class="icone"><i class="fa-solid fa-circle-check"></i></div><h1>C\'est noté</h1><p>La boutique a été prévenue pour la commande ' + echapper(r.reference) + ' et reviendra vers vous rapidement.</p>';
-            })
-            .withFailureHandler(function (e) { bouton.disabled = false; var p = document.getElementById('erreur'); p.textContent = (e && e.message) || 'Erreur, réessayez.'; p.hidden = false; })
-            .signalerColisNonRecu(r.reference, r.jeton || '');
-        });
-        document.getElementById('pourtant-recu').addEventListener('click', function (e) { e.preventDefault(); confirmer(null); });
-        return;
-      }
-
-      // Cas normal (QR du bordereau, glissé dans le colis) : UN SEUL geste.
-      hote.innerHTML = logo + '<h1>Votre colis est arrivé ?</h1>' +
-        '<p>' + (r.prenom ? 'Bonjour ' + echapper(r.prenom) + ', c' : 'C') + 'onfirmez la réception de la commande <strong>' + echapper(r.reference) + '</strong> en un seul geste.</p>' +
-        '<button type="button" id="confirmer"><i class="fa-solid fa-box-open"></i> Je confirme la réception</button>' +
-        '<p class="erreur" id="erreur" hidden></p>';
-      document.getElementById('confirmer').addEventListener('click', function () { confirmer(this); });
+      hote.innerHTML =
+        '<div class="colis-entete">' + logo + '<h1>Boutique GDB — ' + echapper(m.reference) + '</h1></div>' +
+        '<div class="colis-bloc"><h2>' + (m.relais ? 'Point relais' : 'Destinataire') + '</h2><p><strong>' + echapper(m.destinataire) + '</strong><br>' +
+          (m.lignes || []).map(echapper).join('<br>') +
+          (m.telephone ? '<br>Tél. ' + echapper(m.telephone) : '') + '</p></div>' +
+        (m.contenu && m.contenu.length
+          ? '<div class="colis-bloc"><h2>Contenu (' + m.contenu.length + ' article' + (m.contenu.length > 1 ? 's' : '') + ')</h2><div class="colis-contenu">' +
+            m.contenu.map(function (l) { return '<span>• ' + echapper(l.nom) + (l.option ? ' — ' + echapper(l.option) : '') + ' × ' + echapper(l.quantite) + '</span>'; }).join('') + '</div></div>'
+          : '') +
+        '<div class="colis-bloc"><h2>Contact vendeur</h2><p>' + echapper(m.contactVendeur) + '</p></div>';
     })();
   </script>
 </body>

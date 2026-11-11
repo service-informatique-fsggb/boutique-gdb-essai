@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><script>
   // Boutique ouverte par le chargeur anonyme (voir BACK_AppelsAnonymes.js) :
   // la page n'est PAS servie par HtmlService, google.script.run n'existe donc
@@ -143,6 +143,46 @@
       }
     };
   })();
+
+  // Bouton « Se connecter avec Google » (même rendu partout). L'adresse vient du serveur (getConfigConnexionGoogle) : navigation
+  // vers Google dans la fenêtre entière (target _top), retour sur la boutique déjà connecté.
+  function gdbBoutonGoogleHtml_(url, texte) {
+    return '<a class="gdb-bouton-google" target="_top" rel="noopener" href="' + String(url).replace(/"/g, "&quot;") + '">' +
+      '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.5 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>' +
+      '<span>' + (texte || "Se connecter avec Google") + '</span></a>';
+  }
+
+  // Page servie par Apps Script lui-même (adresse « …googleusercontent.com ») : l'origine n'est pas déclarable chez Google ;
+  // sur le domaine de la boutique (boutique.fsggb.fr) elle l'est.
+  function gdbDansBacASableGoogle_() { try { return /\.googleusercontent\.com$/.test(location.hostname); } catch (e) { return true; } }
+
+  // Bouton Google « officiel » (Google Identity Services) : sans secret, même ID que les autres applications. surJeton(jetonIdentité).
+  // auto = true : connexion AUTOMATIQUE si le navigateur n'a qu'un compte Google déjà autorisé pour cette application (Google One Tap) ;
+  // s'il y en a plusieurs, Google propose le choix ; le bouton reste affiché dans tous les cas.
+  function gdbBoutonGis_(hote, clientId, surJeton, auto) {
+    if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+      var sc = document.createElement("script"); sc.src = "https://accounts.google.com/gsi/client"; sc.async = true; document.head.appendChild(sc);
+    }
+    var essais = 0, t = setInterval(function () {
+      essais++;
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        clearInterval(t);
+        try {
+          window.google.accounts.id.initialize({ client_id: clientId, auto_select: !!auto, cancel_on_tap_outside: false, use_fedcm_for_prompt: true, callback: function (r) { if (r && r.credential) surJeton(r.credential); } });
+          window.google.accounts.id.renderButton(hote, { theme: "outline", size: "large", width: 280, text: "signin_with", locale: "fr" });
+          hote.hidden = false;
+          if (auto) { try { window.google.accounts.id.prompt(); } catch (e) { /* le bouton reste disponible */ } }
+        } catch (e) { hote.hidden = true; }
+      } else if (essais > 25) clearInterval(t);
+    }, 200);
+  }
+
+  // Choisit le bon moyen : GIS sur le domaine de la boutique, lien (flux avec secret) dans une page Apps Script, rien sinon.
+  function gdbAfficherConnexionGoogle_(hote, config, role, surJeton, auto) {
+    if (!hote || !config || !config.clientId) return;
+    if (!gdbDansBacASableGoogle_() || config.gisBacASable) { gdbBoutonGis_(hote, config.clientId, surJeton, auto); return; }
+    if (config.actif && config.urls && config.urls[role]) { hote.innerHTML = gdbBoutonGoogleHtml_(config.urls[role], "Se connecter avec Google"); hote.hidden = false; }
+  }
 </script>
 
   <base target="_top">
@@ -151,7 +191,6 @@
        Google (c'est Google qui liste TOUS les comptes connectes) et le
        bouton officiel avec son logo. Charge en differe : la boutique doit
        s'afficher meme si ce script est bloque ou indisponible. -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
   /* ============================================
      THÈME COMMUN - Boutique GDB
@@ -2520,7 +2559,9 @@
     display: none;
   }
 </style>
-  <style>
+  <!-- FICHIER REGROUPE : Styles historiques de la boutique cliente (cartes, panier, mobile, bouton de paiement). Sections : CSS_ordi_articles, CSS_ordi_panier, CSS_mobile, CSS_mobile_articles, CSS_bouton_helloasso (voir CARTE_DES_FICHIERS.md et ANCIENS_NOMS.md). -->
+<!-- ===== SECTION : CSS_ordi_articles ===== -->
+<style>
   #articles-container {
     display: flex;
     flex-wrap: wrap;
@@ -2620,7 +2661,8 @@
     background-color: #bfc1d8;
   }
 </style>
-  <style>
+<!-- ===== SECTION : CSS_ordi_panier ===== -->
+<style>
     .elemdupanier {
     font-size: 18px;
   }
@@ -2629,7 +2671,8 @@
     font-size: 40px;
   }
 </style>
-  <style>
+<!-- ===== SECTION : CSS_mobile ===== -->
+<style>
   /* Anciennes tailles globales body / h1 / h2 / p supprimees des trois
      paliers (h1 jusqu'a 100px, p 25px, body 10 a 20px...) : calibrees pour
      l'ancien affichage ou le telephone simulait un ecran de 980px (pas de
@@ -2730,8 +2773,8 @@
     }
   }
 </style>
-
-  <style>
+<!-- ===== SECTION : CSS_mobile_articles ===== -->
+<style>
   @media (max-width: 768px) {
     .article h2 {
       font-size: 35px;
@@ -2903,8 +2946,8 @@
     }
   }
 </style>
+<!-- ===== SECTION : CSS_bouton_helloasso ===== -->
 
-  
     <style>
       .HaPay {
         width: fit-content;
@@ -3006,6 +3049,7 @@
         fill: currentColor;
       }
     </style>
+
   <style>
   :root {
     --shop-blue: #000761;
@@ -7378,22 +7422,17 @@
           <div class="checkout-delivery-options">
             <label class="checkout-delivery-option">
               <input type="radio" name="livraison" value="standard" checked>
-              <span class="checkout-delivery-copy"><strong>Livraison standard</strong><small>Livraison par colis en 3-5 jours ouvrés, à votre adresse</small></span>
+              <span class="checkout-delivery-copy"><strong>Livraison standard</strong><small>Colis La Poste à votre adresse, en 3 à 5 jours ouvrés</small></span>
               <span class="checkout-delivery-price">Gratuit</span>
             </label>
             <label class="checkout-delivery-option">
               <input type="radio" name="livraison" value="retrait">
-              <span class="checkout-delivery-copy"><strong>Retrait sur place</strong><small>Retirez votre commande à l'accueil — aucune adresse à renseigner</small></span>
+              <span class="checkout-delivery-copy"><strong>Retrait sur place</strong><small>À l'accueil, sans adresse à renseigner</small></span>
               <span class="checkout-delivery-price is-gold">Gratuit</span>
-            </label>
-            <label class="checkout-delivery-option is-disabled">
-              <input type="radio" name="livraison" value="express" disabled>
-              <span class="checkout-delivery-copy"><strong>Livraison express</strong><small>Bientôt disponible</small></span>
-              <span class="checkout-delivery-price is-soon"><i class="fa-solid fa-hourglass-half"></i> À venir</span>
             </label>
             <label class="checkout-delivery-option">
               <input type="radio" name="livraison" value="mondialrelay">
-              <span class="checkout-delivery-copy"><strong>Point Mondial Relay</strong><small>Retrait dans un point relais proche de chez vous</small></span>
+              <span class="checkout-delivery-copy"><strong>Point Mondial Relay</strong><small>Retrait dans le point relais de votre choix</small></span>
               <span class="checkout-delivery-price" id="mondialrelay-price-label">≈ ... €</span>
             </label>
           </div>
@@ -7406,15 +7445,16 @@
         <section class="checkout-step-panel" data-step-panel="2">
           <h3>Vos coordonnées</h3>
           <div class="checkout-grid">
-            <input type="text" id="nom" placeholder="Nom" maxlength="50" autocomplete="family-name" onblur="mettreAJourNomFamille('nom')">
-            <input type="text" id="prenom" placeholder="Prénom" maxlength="50" autocomplete="given-name" onblur="mettreAJourprenomfamille('prenom')">
-            <input type="email" id="email" placeholder="Email" maxlength="100" autocomplete="email" onblur="validermail(this)">
-            <input type="tel" id="telephone" placeholder="Téléphone" maxlength="14" inputmode="numeric" autocomplete="tel" pattern="\d{2}( \d{2}){4}" oninput="formaterNumero(this)">
+            <label class="checkout-field"><span>Nom</span><input type="text" id="nom" placeholder="Nom" maxlength="50" autocomplete="family-name" onblur="mettreAJourNomFamille('nom')"></label>
+            <label class="checkout-field"><span>Prénom</span><input type="text" id="prenom" placeholder="Prénom" maxlength="50" autocomplete="given-name" onblur="mettreAJourprenomfamille('prenom')"></label>
+            <label class="checkout-field"><span>Adresse e-mail</span><input type="email" id="email" placeholder="Email" maxlength="100" autocomplete="email" onblur="validermail(this)"></label>
+            <label class="checkout-field"><span>Téléphone</span><input type="tel" id="telephone" placeholder="Téléphone" maxlength="14" inputmode="numeric" autocomplete="tel" pattern="\d{2}( \d{2}){4}" oninput="formaterNumero(this)"></label>
           </div>
           <div class="checkout-grid checkout-address-fields" id="checkout-address-fields">
-            <input type="text" id="adresse" placeholder="Nom et numéro de rue" maxlength="100" autocomplete="address-line1" onblur="formaterAdresse(this)">
-            <input type="text" id="ville" placeholder="Ville" maxlength="50" autocomplete="address-level2" onblur="mettreAJourNomFamille('ville')">
-            <input type="text" id="codePostal" placeholder="Code postal" maxlength="5" inputmode="numeric" autocomplete="postal-code" pattern="\d{5}" oninput="formaterCodePostal(this)">
+            <h4 class="checkout-subtitle">Adresse de livraison</h4>
+            <label class="checkout-field"><span>Numéro et nom de rue</span><input type="text" id="adresse" placeholder="Nom et numéro de rue" maxlength="100" autocomplete="address-line1" onblur="formaterAdresse(this)"></label>
+            <label class="checkout-field"><span>Ville</span><input type="text" id="ville" placeholder="Ville" maxlength="50" autocomplete="address-level2" onblur="mettreAJourNomFamille('ville')"></label>
+            <label class="checkout-field"><span>Code postal</span><input type="text" id="codePostal" placeholder="Code postal" maxlength="5" inputmode="numeric" autocomplete="postal-code" pattern="\d{5}" oninput="formaterCodePostal(this)"></label>
           </div>
           <p class="checkout-step-hint" id="checkout-address-hint" hidden><i class="fa-solid fa-circle-info"></i> Retrait sur place : aucune adresse n'est nécessaire.</p>
           <div class="checkout-mondialrelay-fields is-hidden" id="checkout-mondialrelay-fields">
@@ -7448,7 +7488,7 @@
         </section>
 
       </div>
-      <p class="checkout-note">Paiement 100% sécurisé via HelloAsso. La confirmation définitive et l'e-mail de reçu ne sont envoyés qu'une fois le paiement effectué.</p>
+      <p class="checkout-note" id="checkout-note-paiement">Paiement par carte 100% sécurisé via HelloAsso. La confirmation définitive et l'e-mail de reçu ne sont envoyés qu'une fois le paiement effectué.</p>
     </div>
   </section>
 
@@ -7538,7 +7578,9 @@
   })();
 </script>
 
-  <script>
+  <!-- FICHIER REGROUPE : Boutique cliente : fenetres, catalogue/panier/compte, verification des formulaires, commande et paiement. Sections : SCRIPT_Alert, SCRIPT_Articles, SCRIPT_VerifForm, SCRIPT_ClientAndCommande (voir CARTE_DES_FICHIERS.md et ANCIENS_NOMS.md). -->
+<!-- ===== SECTION : SCRIPT_Alert ===== -->
+<script>
   // Fonction globale pour afficher la boite de dialogue.
   // showAlert(titre, message)                          -> simple information
   // showAlert(titre, message, url, libelle)            -> ajoute un bouton d'action (lien reel, navigation top-level)
@@ -7568,6 +7610,12 @@
     }
 
     if (modal) modal.style.display = 'block';
+    // L'application vit dans un cadre Google : le clavier ne l'atteint que si elle a le focus. Sans cela, Echap et Entree
+    // ne fermaient la fenetre qu'apres un premier clic dedans (verifie en ligne le 06/11 : Echap sans effet a l'arrivee).
+    var boutonFermer = document.getElementById('close-button');
+    if (modal && boutonFermer && boutonFermer.focus) {
+      try { window.focus(); boutonFermer.focus({ preventScroll: true }); } catch (e) { /* sans gravite : la fenetre reste utilisable a la souris */ }
+    }
   }
   window.showAlert = showAlert;
 
@@ -7609,10 +7657,11 @@
     // visite, elle bloquait l'acces au catalogue a chaque chargement pour un
     // message que l'habitue connait deja. Changer la cle (suffixe _v1) pour
     // la remontrer a tout le monde si son contenu change.
+    var parametresBoutique = (window.BOUTIQUE_BOOTSTRAP && window.BOUTIQUE_BOOTSTRAP.parametres) || {};
     var CLE_ACCUEIL_VU = 'boutiqueGdbAccueilVu_v1';
     var accueilDejaVu = false;
-    try { accueilDejaVu = localStorage.getItem(CLE_ACCUEIL_VU) === '1'; } catch (e) { /* stockage indisponible */ }
-    var parametresBoutique = (window.BOUTIQUE_BOOTSTRAP && window.BOUTIQUE_BOOTSTRAP.parametres) || {};
+    var accueilEmpreinte = String((parametresBoutique.accueilTitre || '') + '|' + (parametresBoutique.accueilMessage || '')).length + ':' + String(parametresBoutique.accueilMessage || '').slice(0, 24);
+    try { var vu = localStorage.getItem(CLE_ACCUEIL_VU); accueilDejaVu = vu === '1' ? /^Bienvenue sur la boutique réservée/.test(parametresBoutique.accueilMessage || 'Bienvenue sur la boutique réservée') : vu === accueilEmpreinte; } catch (e) { /* stockage indisponible */ }
     // Reglage administrateur : taille de la barre de navigation (base 22 px).
     if (Number(parametresBoutique.barreNavigationPx)) document.documentElement.style.setProperty('--zoom-barre-nav', String(Number(parametresBoutique.barreNavigationPx) / 22));
     // Boutique fermee par l'administrateur : bandeau permanent, prioritaire.
@@ -7625,13 +7674,13 @@
       document.body.insertBefore(bandeau, document.body.firstChild);
     }
     if (!accueilDejaVu && parametresBoutique.accueilPopup !== false) {
-      showAlert('Fédération des Scouts et Guides Godefroy de Bouillon', 'Bienvenue sur la boutique réservée aux chefs et cheftaines des Scouts Godefroy de Bouillon.\nPour toute question, vous pouvez écrire à boutique@fsggb.fr');
-      try { localStorage.setItem(CLE_ACCUEIL_VU, '1'); } catch (e) { /* stockage indisponible */ }
+      showAlert(parametresBoutique.accueilTitre || 'Fédération des Scouts et Guides Godefroy de Bouillon', parametresBoutique.accueilMessage || 'Bienvenue sur la boutique réservée aux chefs et cheftaines des Scouts Godefroy de Bouillon.\nPour toute question, vous pouvez écrire à boutique@fsggb.fr');
+      try { localStorage.setItem(CLE_ACCUEIL_VU, accueilEmpreinte); } catch (e) { /* stockage indisponible */ }
     }
   });
 </script>
-
-  <script>
+<!-- ===== SECTION : SCRIPT_Articles ===== -->
+<script>
   var panier = [];
   var articles = [];
   var articleCourant = null;
@@ -7686,7 +7735,7 @@
     }
 
     function recevoirCatalogue(data) {
-      articles = Array.isArray(data) ? data : [];
+      articles = completerImagesOptions_(Array.isArray(data) ? data : []);
       remplirSelectCategories(extraireCategories(articles));
       initialiserFiltresArticles(articles);
       restaurerFiltresBoutique();
@@ -8629,7 +8678,7 @@
       card.innerHTML = [
         '<div class="product-card-image">',
         (etiquetteCarte ? '<span class="product-card-badge">' + escapeHtml(etiquetteCarte) + '</span>' : ''),
-        '<img class="img-progressive" src="' + escapeHtml(changerTailleImageDrive(lienImageCarte, 40)) + '" data-full="' + escapeHtml(changerTailleImageDrive(lienImageCarte, 320)) + '" alt="' + escapeHtml(article.Nom) + '" loading="lazy" onerror="this.classList.add(\'is-broken\')"></div>',
+        '<img loading="lazy" decoding="async" class="img-progressive" src="' + escapeHtml(changerTailleImageDrive(lienImageCarte, 40)) + '" data-full="' + escapeHtml(changerTailleImageDrive(lienImageCarte, 320)) + '" alt="' + escapeHtml(article.Nom) + '" loading="lazy" onerror="this.classList.add(\'is-broken\')"></div>',
         '<div class="product-card-content">',
         '<p class="product-card-meta">' + escapeHtml(article.Categorie || "") + '</p>',
         '<h2>' + escapeHtml(article.Nom || "") + '</h2>',
@@ -8850,15 +8899,21 @@
     gallery.innerHTML = "";
 
     var seen = {};
-    getOptionsVisiblesPourArticle(articleCourant).forEach(function (option) {
+    var options = getOptionsVisiblesPourArticle(articleCourant);
+    // Une variante en rupture grise SA vignette (jamais l'article entier) ; si plusieurs variantes
+    // partagent la meme image, elle n'est grisee que si toutes sont en rupture.
+    var imageDisponible = {};
+    options.forEach(function (o) { var im = getOptionImage(o); if (im && stockAchetable_(o) > 0) imageDisponible[im] = true; });
+    options.forEach(function (option) {
       var image = getOptionImage(option);
       if (!image || seen[image]) return;
       seen[image] = true;
 
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "product-thumbnail" + (String(option.ID) === String(optionCourante.ID) ? " is-active" : "");
-      button.innerHTML = '<img class="img-progressive" src="' + escapeHtml(changerTailleImageDrive(image, 30)) + '" data-full="' + escapeHtml(changerTailleImageDrive(image, 120)) + '" alt="' + escapeHtml(getOptionDescription(option)) + '" loading="lazy" onerror="this.classList.add(\'is-broken\')">';
+      button.className = "product-thumbnail" + (String(option.ID) === String(optionCourante.ID) ? " is-active" : "") + (imageDisponible[image] ? "" : " is-rupture");
+      if (!imageDisponible[image]) button.title = "Rupture de stock";
+      button.innerHTML = '<img loading="lazy" decoding="async" class="img-progressive" src="' + escapeHtml(changerTailleImageDrive(image, 30)) + '" data-full="' + escapeHtml(changerTailleImageDrive(image, 120)) + '" alt="' + escapeHtml(getOptionDescription(option)) + '" loading="lazy" onerror="this.classList.add(\'is-broken\')">';
       button.addEventListener("click", function () {
         optionCourante = option;
         document.getElementById("product-option-select").value = String(option.ID);
@@ -9002,7 +9057,7 @@
         panier.slice(0, 3).forEach(function (article) {
           html.push(
             '<article class="cart-preview-line">' +
-            '<img src="' + escapeHtml(article.Image || "") + '" alt="">' +
+            '<img loading="lazy" decoding="async" src="' + escapeHtml(article.Image || "") + '" alt="">' +
             '<div><strong>' + escapeHtml(article.Nom) + '</strong><span>' + escapeHtml(article.Description || "") + '</span><small>Qté ' + escapeHtml(article.Quantite) + ' · ' + formatPrix(article.Prix * article.Quantite) + ' €</small></div>' +
             '</article>'
           );
@@ -9046,7 +9101,7 @@
       panier.forEach(function (article, index) {
         html.push(
           '<article class="cart-page-line">' +
-          '<img src="' + escapeHtml(article.Image || "") + '" alt="">' +
+          '<img loading="lazy" decoding="async" src="' + escapeHtml(article.Image || "") + '" alt="">' +
           '<div class="cart-page-line-info"><strong>' + escapeHtml(article.Nom) + '</strong><span>' + escapeHtml(article.Description || "") + '</span><small>' + formatPrix(article.Prix) + ' € / unité</small></div>' +
           '<label class="cart-page-quantity">Quantité<input type="number" min="1" max="' + escapeHtml(article.QuantiteDisponible) + '" value="' + escapeHtml(article.Quantite) + '" onchange="modifierPrix(' + index + ', this.value)"></label>' +
           '<strong class="cart-page-line-total">' + formatPrix(article.Prix * article.Quantite) + ' €</strong>' +
@@ -9055,7 +9110,7 @@
         );
       });
       html.push('</div>');
-      html.push('<footer class="cart-page-summary"><div><span>Total de la commande</span><strong>' + formatPrix(total) + ' €</strong></div><button type="button" onclick="ouvrirCheckoutWindow()"><i class="fa-solid fa-lock"></i> Finaliser la commande</button></footer>');
+      html.push('<footer class="cart-page-summary"><div><span>Total de la commande</span><strong>' + formatPrix(total) + ' €</strong><small class="cart-page-livraison">Livraison standard et retrait sur place : sans frais. Point Mondial Relay : frais indiqués à l\'étape suivante.</small></div><button type="button" onclick="ouvrirCheckoutWindow()"><i class="fa-solid fa-lock"></i> Finaliser la commande</button></footer>');
     }
     html.push('  </div></div>');
     cartPage.innerHTML = html.join("");
@@ -9175,10 +9230,17 @@
     if (typeof google === "undefined" || !google.script || !google.script.run) return;
     google.script.run
       .withSuccessHandler(function (config) {
-        if (!config || !config.clientId) return; // non configure : rien a afficher
-        attendreBibliothequeGoogle(function () {
-          initialiserBoutonGoogle(config.clientId);
-        });
+        var hote = document.getElementById("connexion-google");
+        if (!hote || !config || !config.clientId) return; // non configure : rien a afficher (le lien par e-mail reste)
+        var zone = document.createElement("div");
+        hote.innerHTML = "";
+        hote.appendChild(zone);
+        hote.insertAdjacentHTML("beforeend", '<p class="connexion-rapide-alt">Utilisez votre compte Google @fsggb.fr, ou le lien envoyé par e-mail ci-dessous.</p>');
+        hote.hidden = true;
+        gdbAfficherConnexionGoogle_(zone, config, "client", function (jeton) { traiterReponseGoogle({ credential: jeton }); }, true);
+        // Le conteneur n'apparaît que si un bouton a pu être affiché.
+        var obs = new MutationObserver(function () { hote.hidden = !zone.firstChild; });
+        obs.observe(zone, { childList: true, subtree: true, attributes: true });
       })
       .withFailureHandler(function () {})
       .getConfigConnexionGoogle();
@@ -9270,6 +9332,39 @@
     ouvrirCompteClient();
   }
   window.validerConnexionRapide = validerConnexionRapide;
+
+  // Connexion Google AUTOMATIQUE à l'ouverture de la boutique (Google One Tap) : un seul compte Google déjà autorisé dans le navigateur
+  // -> connecté sans clic ; plusieurs comptes -> Google propose le choix. Rien ne s'affiche si la personne est déjà connectée.
+  document.addEventListener("DOMContentLoaded", function () {
+    window.setTimeout(function () {
+      if (getVerifiedEmail() || typeof google === "undefined" || !google.script || !google.script.run) return;
+      google.script.run.withSuccessHandler(function (config) {
+        if (!config || !config.clientId || !(config.gisBacASable || !gdbDansBacASableGoogle_())) return;
+        var zone = document.createElement("div");
+        zone.style.display = "none";
+        document.body.appendChild(zone);
+        gdbBoutonGis_(zone, config.clientId, function (jeton) { traiterReponseGoogle({ credential: jeton }); }, true);
+      }).withFailureHandler(function () {}).getConfigConnexionGoogle();
+    }, 1500);
+  });
+
+  // Retour de la connexion Google : le serveur a déjà ouvert la session (BACK_Admin.js, retourGoogle_).
+  (function () {
+    var gc = (window.BOUTIQUE_BOOTSTRAP || {}).googleConnexion;
+    if (!gc || gc.role !== "client" || !gc.email) return;
+    document.addEventListener("DOMContentLoaded", function () {
+      enregistrerConnexionClient_(gc.email, gc.session);
+      compteClientCache = null;
+      mettreAJourBoutonCompte();
+      if (gc.profil && localStorage.getItem("boutiqueGdbDisableAutoFilters") !== "true") {
+        decocherToutesLesCases("lieu-checkboxes");
+        decocherToutesLesCases("unite-checkboxes");
+        appliquerProfilFiltrage(gc.profil);
+        updateFilterSummary();
+      }
+      try { google.script.history.replace(null, {}, ""); } catch (e) { /* adresse inchangée */ }
+    });
+  })();
 
   // motif (facultatif) : pourquoi on arrive ici ("pour acceder au panier"...).
   // Affiche en tete de la page de connexion, a la place de l'ancienne fenetre
@@ -9988,6 +10083,19 @@
     return String(description || "").trim();
   }
 
+  // Une variante SANS image reprend l'image de l'article (ou, a defaut, celle de la premiere variante qui en a une) : jamais de case vide
+  // dans la fiche, le panier ou le catalogue. Reversible (aucune donnee n'est modifiee dans la feuille) : option.imageHeritee = true.
+  function completerImagesOptions_(liste) {
+    (liste || []).forEach(function (a) {
+      var opts = a && Array.isArray(a.Option) ? a.Option : [], defaut = (a && a.LienImage) || "";
+      for (var i = 0; !defaut && i < opts.length; i++) if (opts[i] && opts[i].LienImage) defaut = opts[i].LienImage;
+      if (!defaut) return;
+      opts.forEach(function (o) { if (o && !o.LienImage) { o.LienImage = defaut; o.imageHeritee = true; } });
+    });
+    return liste;
+  }
+  window.completerImagesOptions_ = completerImagesOptions_;
+
   function getOptionImage(option) {
     return option && (option.LienImage || "");
   }
@@ -10704,8 +10812,8 @@
   window.addEventListener("load", ajusterHauteurEnTete);
   ajusterHauteurEnTete();
 </script>
-
-  <script>
+<!-- ===== SECTION : SCRIPT_VerifForm ===== -->
+<script>
   // ---------------------------------------------------------------------------
   // Formatage et nettoyage des champs du formulaire client.
   //
@@ -10855,8 +10963,8 @@
   window.formaterCodePostal = formaterCodePostal;
   window.formaterAdresse = formaterAdresse;
 </script>
-
-  <script>
+<!-- ===== SECTION : SCRIPT_ClientAndCommande ===== -->
+<script>
 var infosClient = {};
 var infosLivraison = { type: 'standard', libelle: 'Livraison standard', necessiteAdresse: true };
 
@@ -10881,7 +10989,13 @@ var MR_BAREME_INDICATIF = [
   { maxGrammes: 25000, prix: 25.99 }
 ];
 var MR_POIDS_DEFAUT_G = 300; // utilise pour un article sans poids renseigne par le vendeur
-var MR_BRAND_CODE = "BDTEST "; // code de test public Mondial Relay (espace final volontaire, champ a largeur fixe)
+// Code enseigne Mondial Relay : réglé par l'administrateur (Paramètres > Secrets et connexions) ; à défaut, code de test public « BDTEST ».
+// Le champ du widget est à largeur fixe (8 caractères) : on complète par des espaces.
+function mondialRelayBrand_() {
+  var code = String(((window.BOUTIQUE_BOOTSTRAP && window.BOUTIQUE_BOOTSTRAP.parametres) || {}).mondialRelayEnseigne || "BDTEST").trim();
+  return (code + "        ").slice(0, 8);
+}
+var MR_BRAND_CODE = mondialRelayBrand_();
 
 function calculerPoidsPanierGrammes() {
   return (panier || []).reduce(function (total, article) {
@@ -11440,7 +11554,7 @@ function demarrerPaiementCommande() {
   rendreZonePaiement(
     '<div class="checkout-payment-loading">'
     + '<div class="loader-spinner"></div>'
-    + '<p>Préparation sécurisée de votre commande et du lien de paiement HelloAsso…</p>'
+    + '<p>' + (infosLivraison && infosLivraison.pv && /virement|differe/.test(infosLivraison.pv.paiement || '') ? 'Enregistrement de votre commande (cela peut prendre quelques secondes)…' : 'Préparation sécurisée de votre commande et du lien de paiement HelloAsso…') + '</p>'
     + '</div>'
   );
 
@@ -12371,6 +12485,17 @@ function afficherErreurPaiement(message) {
   .pv-ct-statut.est-erreur { background: #fde4e4; color: #b3261e; }
   .pv-ct-pieces button.est-attente::after { content: '…'; margin-left: 4px; color: #8a6100; }
   .pv-ct-pieces button.est-erreur { color: #b3261e; }
+
+  /* Comptes : en-tête clair et lisible, synthèse en un seul bloc séparé par des filets (pas de vignettes collées). */
+  #seller-tab-comptes .seller-panel-header { padding: 16px 24px; background: #f3f4fb; border-bottom: 1px solid var(--pv-trait, #d9dbea); }
+  #seller-tab-comptes .seller-panel-header h2 { color: var(--pv-bleu); font-size: 18px; font-weight: 700; }
+  #seller-tab-comptes .seller-account-summary { margin: 18px 20px; border: 1px solid var(--pv-trait, #d9dbea); border-radius: 12px; overflow: hidden; }
+  #seller-tab-comptes .seller-account-summary div { padding: 16px 22px; }
+  #seller-tab-comptes .seller-export-finances { margin: 0 20px 14px; border: 1px solid var(--pv-trait, #d9dbea); border-radius: 10px; }
+  #seller-tab-comptes .seller-expense-form { margin: 0 20px 14px; border: 1px solid var(--pv-trait, #d9dbea); border-radius: 10px; }
+  #seller-tab-comptes .seller-ruptures-panel .seller-panel-header, #seller-tab-comptes .seller-avoirs .seller-panel-header { background: #f3f4fb; }
+  #seller-tab-comptes .seller-ruptures-panel .seller-panel-header h2, #seller-tab-comptes .seller-avoirs .seller-panel-header h2 { color: var(--pv-bleu); }
+  #seller-tab-comptes .seller-ruptures-panel, #seller-tab-comptes .seller-avoirs { margin-top: 0; }
 </style>
 
   <script>
@@ -12468,7 +12593,9 @@ function afficherErreurPaiement(message) {
   })();
 </script>
 
-  <script>
+  <!-- FICHIER REGROUPE : Uniforme pieces par pieces cote client et visite guidee de l'uniforme. Sections : SCRIPT_PreversionClient, SCRIPT_VisiteUniforme (voir CARTE_DES_FICHIERS.md et ANCIENS_NOMS.md). -->
+<!-- ===== SECTION : SCRIPT_PreversionClient ===== -->
+<script>
   /* ===================== PREVERSION — boutique client =====================
      Nouveautés de la réunion avec la boutique (voir BACK_Preversion.js) :
      commande d'unité par le référent, virement, commande sans stock,
@@ -12481,6 +12608,8 @@ function afficherErreurPaiement(message) {
     return {
       urlPv: !!boot.urlPv,
       actif: boot.actif || {},
+      paiements: boot.paiements || { carte: true, virement: !!(boot.actif && boot.actif.virement) },
+      livraisons: boot.livraisons || null,
       uniformes: boot.uniformes || [],
       liensPartenaires: boot.liensPartenaires || {},
       catalogue: boot.catalogue || null,
@@ -12573,7 +12702,7 @@ function afficherErreurPaiement(message) {
           // Le catalogue ordinaire peut arriver APRÈS : on attend qu'il soit là
           // pour ne pas être écrasé par lui.
           if (!articles.length && essais++ < 60) { window.setTimeout(remplacer, 500); return; }
-          articles = complet;
+          articles = typeof completerImagesOptions_ === "function" ? completerImagesOptions_(complet) : complet;
           remplirSelectCategories(extraireCategories(articles));
           // Bornes de prix recalculees : un article a stock nul moins cher que
           // le reste serait sinon masque par l'intervalle du premier catalogue.
@@ -12632,17 +12761,48 @@ function afficherErreurPaiement(message) {
     pvMajPrixLivraison_();
   }
 
+  // Moyens de paiement proposés (réglages du vendeur) pour la commande en cours.
+  function pvMoyensPaiement_() {
+    var m = pvClient.paiements || { carte: true };
+    var viaUnite = pvCommandeUniteActive_();
+    var virementOk = !viaUnite || (pvClient.profil && pvClient.profil.virement);
+    var liste = [];
+    if (m.carte) liste.push({ valeur: "carte", titre: "Carte bancaire", detail: "Paiement immédiat en ligne, sécurisé par HelloAsso." });
+    if (m.virement && virementOk) liste.push({ valeur: "virement", titre: "Virement bancaire", detail: m.ribMode === "mail" ? "Le RIB vous est envoyé par e-mail ; la commande est préparée à réception du virement." : "Le RIB s'affiche à la fin de la commande ; elle est préparée à réception du virement." });
+    if (m.differe && virementOk) liste.push({ valeur: "differe", titre: "Payer plus tard", detail: "Commande préparée tout de suite, à régler par virement sous " + (m.delaiJours || 15) + " jours (pour les commandes urgentes)." });
+    return liste;
+  }
+
   function pvBlocPaiement_() {
-    // Virement proposé à TOUT acheteur (unité ou particulier).
-    if (!pvActifClient("virement")) return "";
-    if (pvCommandeUniteActive_() && !pvClient.profil.virement) return "";
+    var liste = pvMoyensPaiement_();
+    if (!liste.length) return "";
+    if (!liste.some(function (m) { return m.valeur === pvClient.paiement; })) pvClient.paiement = liste[0].valeur;
+    var note = document.getElementById("checkout-note-paiement");
+    if (note) note.style.display = liste.length === 1 && liste[0].valeur !== "carte" ? "none" : "";
+    if (liste.length === 1 && liste[0].valeur === "carte") return "";
     return '<section class="checkout-recap-section pv-paiement">' +
       '<div class="checkout-recap-heading"><h4><i class="fa-solid fa-wallet"></i> Paiement</h4></div>' +
-      '<label class="pv-choix"><input type="radio" name="pv-paiement" value="virement"' + (pvClient.paiement === "virement" ? " checked" : "") + '>' +
-      '<span><strong>Virement bancaire</strong><small>La commande est préparée à réception du virement. Le RIB vous est envoyé par e-mail.</small></span></label>' +
-      '<label class="pv-choix"><input type="radio" name="pv-paiement" value="carte"' + (pvClient.paiement === "carte" ? " checked" : "") + '>' +
-      '<span><strong>Carte bancaire (HelloAsso)</strong><small>Paiement immédiat en ligne</small></span></label>' +
-      '</section>';
+      liste.map(function (m) {
+        return '<label class="pv-choix"><input type="radio" name="pv-paiement" value="' + m.valeur + '"' + (pvClient.paiement === m.valeur ? " checked" : "") + '>' +
+          '<span><strong>' + m.titre + '</strong><small>' + m.detail + '</small></span></label>';
+      }).join("") + '</section>';
+  }
+
+  // Modes de livraison que le vendeur a désactivés : retirés de l'étape 1.
+  function pvAppliquerLivraisonsAutorisees_() {
+    var autorisees = pvClient.livraisons;
+    if (!autorisees) return;
+    var radios = document.querySelectorAll('input[name="livraison"]');
+    var premier = null;
+    radios.forEach(function (r) {
+      var libre = autorisees[r.value] !== false;
+      var etiquette = r.closest(".checkout-delivery-option");
+      if (etiquette) etiquette.style.display = libre ? "" : "none";
+      if (!libre) { r.checked = false; if (r.disabled === false) r.dataset.pvMasque = "1"; }
+      else if (!premier) premier = r;
+    });
+    var coche = document.querySelector('input[name="livraison"]:checked');
+    if ((!coche || coche.dataset.pvMasque) && premier) premier.checked = true;
   }
 
   function pvInstallerTunnel_() {
@@ -12651,6 +12811,7 @@ function afficherErreurPaiement(message) {
     var ouvrirOrigine = ouvrirCheckoutWindow;
     ouvrirCheckoutWindow = function () {
       ouvrirOrigine.apply(this, arguments);
+      pvAppliquerLivraisonsAutorisees_();
       pvPreparerEtapeLivraison_();
     };
     window.ouvrirCheckoutWindow = ouvrirCheckoutWindow;
@@ -12672,6 +12833,9 @@ function afficherErreurPaiement(message) {
           (offerte ? '<br><span class="pv-offert"><i class="fa-solid fa-gift"></i> Livraison offerte par la Fédération</span>' : '') + '</p></section>');
       }
       hote.insertAdjacentHTML("beforeend", pvBlocPaiement_());
+      hote.insertAdjacentHTML("beforeend", '<p class="pv-urgence"><label><input type="checkbox" id="pv-urgente"' + (pvClient.urgente ? " checked" : "") + '> <i class="fa-solid fa-triangle-exclamation"></i> Commande urgente <span>(dernier recours : la boutique est prévenue par e-mail)</span></label></p>');
+      var caseUrgente = document.getElementById("pv-urgente");
+      if (caseUrgente) caseUrgente.addEventListener("change", function () { pvClient.urgente = caseUrgente.checked; });
       hote.querySelectorAll('input[name="pv-paiement"]').forEach(function (r) {
         r.addEventListener("change", function () { if (r.checked) pvClient.paiement = r.value; checkoutState.resultatPaiement = null; });
       });
@@ -12680,10 +12844,14 @@ function afficherErreurPaiement(message) {
 
     var paiementOrigine = demarrerPaiementCommande;
     demarrerPaiementCommande = function () {
+      if (infosLivraison) {
+        infosLivraison.libelle = String(infosLivraison.libelle || "").replace(/\s*—\s*URGENTE$/, "");
+        if (pvClient.urgente) infosLivraison.libelle += " — URGENTE";
+      }
       if (pvCommandeUniteActive_()) {
         infosLivraison.pv = { pourUnite: true, paiement: pvClient.profil.virement ? pvClient.paiement : "carte", urlPv: pvClient.urlPv, session: getSessionClient() };
-      } else if (pvActifClient("virement") && pvClient.paiement === "virement") {
-        infosLivraison.pv = { pourUnite: false, paiement: "virement", urlPv: pvClient.urlPv };
+      } else if (pvClient.paiement === "virement" || pvClient.paiement === "differe") {
+        infosLivraison.pv = { pourUnite: false, paiement: pvClient.paiement, urlPv: pvClient.urlPv };
       } else if (infosLivraison) {
         delete infosLivraison.pv;
       }
@@ -12695,16 +12863,18 @@ function afficherErreurPaiement(message) {
   // Réponse « commande par virement » (appelée par SCRIPT_ClientAndCommande).
   function pvAfficherCommandeVirement(response) {
     var i = response.instructions || {};
+    var noteCarte = document.getElementById("checkout-note-paiement");
+    if (noteCarte) noteCarte.style.display = "none";
     var backButton = document.getElementById("checkout-payment-back");
     if (backButton) backButton.style.display = "none";
     rendreZonePaiement([
       '<div class="checkout-payment-success pv-virement">',
       '  <i class="fa-solid fa-building-columns"></i>',
-      '  <h4>Commande enregistrée — virement à effectuer</h4>',
+      '  <h4>' + (response.differe ? 'Commande enregistrée — à régler sous ' + escapeHtml(String(i.delaiJours || 15)) + ' jours' : 'Commande enregistrée — virement à effectuer') + '</h4>',
       '  <p>Référence : <strong>' + escapeHtml(response.reference || "") + '</strong> · Montant : <strong>' + escapeHtml(String(response.montant || "").replace(".", ",")) + ' €</strong></p>',
       '  <dl class="pv-rib">',
       '    <dt>Bénéficiaire</dt><dd>' + escapeHtml(i.titulaire || "") + '</dd>',
-      '    <dt>IBAN</dt><dd>' + escapeHtml(i.iban || "communiqué par e-mail") + '</dd>',
+      response.ribParMail ? '    <dt>IBAN</dt><dd>envoyé par e-mail à ' + escapeHtml((infosClient && infosClient.email) || "votre adresse") + '</dd>' : '    <dt>IBAN</dt><dd>' + escapeHtml(i.iban || "à demander à la boutique (voir l'e-mail reçu)") + '</dd>',
       i.bic ? '    <dt>BIC</dt><dd>' + escapeHtml(i.bic) + '</dd>' : '',
       '    <dt>Libellé</dt><dd><strong>' + escapeHtml(i.libelle || response.reference || "") + '</strong></dd>',
       '  </dl>',
@@ -14258,8 +14428,8 @@ function afficherErreurPaiement(message) {
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", lancer); else lancer();
   })();
 </script>
-
-  <script>
+<!-- ===== SECTION : SCRIPT_VisiteUniforme ===== -->
+<script>
   /* ===================== Visite guidée de l'uniforme =====================
      Fait défiler UNE À UNE toutes les pièces de la tenue, de la tête aux
      pieds. Pour chaque pièce, un pointeur de souris glisse jusqu'à elle sur
@@ -14633,7 +14803,7 @@ function afficherErreurPaiement(message) {
 
   /* Navigation latérale (Filtres, Comptes) : même principe que Paramètres */
   .seller-navlat { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 20px; align-items: start; padding: 4px 0; }
-  .seller-navlat-nav { position: sticky; top: 128px; display: grid; gap: 2px; padding: 8px; border: 1px solid var(--theme-line); border-radius: 12px; background: #fff; }
+  .seller-navlat-nav { position: sticky; top: var(--navlat-top, 96px); display: grid; gap: 2px; padding: 8px; border: 1px solid var(--theme-line); border-radius: 12px; background: #fff; }
   .seller-navlat-bouton { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px; border: 0; border-left: 3px solid transparent; border-radius: 6px; background: none; color: var(--theme-blue); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
   .seller-navlat-bouton[hidden] { display: none; }
   .seller-navlat-bouton i { width: 18px; color: var(--theme-muted); text-align: center; }
@@ -14645,11 +14815,26 @@ function afficherErreurPaiement(message) {
   .seller-navlat-pastille[hidden] { display: none; }
   .seller-navlat-volet { display: none; min-width: 0; }
   .seller-navlat-volet.is-visible { display: block; }
+  .seller-navlat.is-empile .seller-navlat-volet { display: block; scroll-margin-top: calc(var(--navlat-top, 96px) + 110px); }
+  .seller-navlat.is-empile .seller-navlat-volet + .seller-navlat-volet { margin-top: 34px; }
+  .seller-navlat.is-empile .seller-navlat-volet + .seller-navlat-volet::before { content: attr(data-titre); display: block; margin: 0 0 14px; padding-top: 18px; border-top: 1px solid var(--theme-line); color: var(--theme-muted); font-size: 12px; font-weight: bold; letter-spacing: .06em; text-transform: uppercase; }
+  .seller-navlat-contenu { min-width: 0; }
+  /* Titre principal FIXE de la page : le contenu glisse dessous, son texte suit la rubrique active (référence : Drive > Bordereaux). */
+  .seller-navlat-titrefixe { position: sticky; top: calc(var(--navlat-top, 96px) - 30px); z-index: 30; margin: 0 0 6px; padding: 30px 0 12px; background: var(--theme-surface, #f6f7fb); }
+  .navlat-titre-libre .seller-navlat-titrefixe { position: static; padding: 0 0 12px; background: transparent; }
+  .seller-navlat-hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .seller-navlat-epingle { flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid var(--theme-line); border-radius: 50%; background: #fff; color: var(--theme-muted); cursor: pointer; }
+  .seller-navlat-epingle[aria-pressed="true"] { color: var(--theme-gold); border-color: var(--theme-gold); background: #fbf6e9; }
+  .seller-navlat-epingle:hover { border-color: var(--theme-gold); }
+  .seller-navlat-hero { padding: 18px 22px; border: 1px solid var(--theme-line); border-left: 4px solid var(--theme-gold); border-radius: 14px; background: var(--theme-white, #fff); color: var(--theme-blue); box-shadow: 0 6px 18px rgba(0, 7, 97, .05); }
+  .seller-navlat-hero p { margin: 0 0 4px; color: var(--theme-muted); font-size: 12px; font-weight: bold; letter-spacing: .04em; text-transform: uppercase; }
+  .seller-navlat-hero p[hidden] { display: none; }
+  .seller-navlat-hero h2 { margin: 0; font-size: 22px; font-weight: 600; color: var(--theme-blue); }
   /* Filtres : deux colonnes sur toute la largeur de la rubrique */
   .seller-navlat-volet .seller-taxonomie-liste { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
   .seller-navlat-volet .seller-taxonomie-colonne { width: 100%; }
   @media (max-width: 899px) {
-    .seller-navlat { grid-template-columns: 1fr; }
+    .seller-navlat { grid-template-columns: minmax(0, 1fr); }
     .seller-navlat-nav { position: static; display: flex; overflow-x: auto; }
     .seller-navlat-bouton { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; }
     .seller-navlat-bouton[aria-selected="true"] { border-bottom-color: var(--theme-gold); }
@@ -14687,6 +14872,9 @@ function afficherErreurPaiement(message) {
 
   /* Légende de colonnes (une seule fois en haut de la liste, pas à chaque ligne). */
   .socle-legende { display: grid; align-items: end; gap: 5px; padding: 0 8px; color: var(--theme-muted); font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; }
+  .gdb-bouton-google { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 16px; border: 1px solid var(--theme-line, #d9dcef); border-radius: 10px; background: #fff; color: #1f2347; font: 600 15px Georgia, serif; text-decoration: none; box-shadow: 0 2px 6px rgba(0, 7, 97, .08); }
+  .gdb-bouton-google:hover { border-color: var(--theme-gold, #c8a24a); }
+  .seller-connexion-google { margin: 10px 0 4px; }
 </style>
 
   <style>
@@ -14876,6 +15064,8 @@ function afficherErreurPaiement(message) {
   .product-card.is-rupture .product-card-image img { filter: grayscale(1); opacity: .55; }
   .product-card.is-rupture h2, .product-card.is-rupture .product-card-price { color: #6a6e92; }
   .product-card.is-rupture { background: #fafafc; }
+  /* Fiche produit : seule l'image de la variante en rupture est grisee (vignette + image principale). */
+  .product-thumbnail.is-rupture img, #product-main-image.is-rupture { filter: grayscale(1); opacity: .55; }
   .product-card-badge.is-rupture { background: #4a4e75 !important; color: #fff !important; }
   .product-card-partenaire { color: var(--shop-blue, #000761); font-size: 14px; font-weight: bold; }
   .product-card-partenaire i { color: var(--shop-gold, #c8a24a); margin-right: 4px; }
@@ -14952,6 +15142,26 @@ function afficherErreurPaiement(message) {
     .product-card-image:has(img:not(.is-loaded):not(.is-broken)), .product-gallery:has(#product-main-image:not(.is-loaded):not(.is-broken)) { animation: none; }
     .shop-toast { transition: none; }
   }
+
+  /* Mobile : une icône seule n'est pas comprise par tout le monde. Les boutons
+     du haut gardent leur texte (« Se connecter », « Mon compte », « Mon panier »). */
+  @media (max-width: 700px) {
+    .shop-header-actions { display: flex !important; flex-wrap: wrap; gap: 8px; width: 100%; }
+    .shop-header-actions .header-action-label { display: inline !important; font-size: 13px; margin-left: 6px; }
+    .shop-header-actions > button { width: auto !important; min-width: 44px; padding: 0 12px !important; flex: 1 1 auto; }
+  }
+
+  .checkout-field { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--shop-blue, #000761); }
+  .checkout-field > span { padding-left: 2px; }
+  .checkout-subtitle { grid-column: 1 / -1; margin: 6px 0 0; font-size: 15px; }
+  .checkout-address-fields { margin-top: 8px !important; }
+
+  /* Commande urgente : discrète et rouge, pour ne pas ressembler à un mode de livraison. */
+  .pv-urgence { margin: 14px 4px 0; font-size: 12px; color: #a11; }
+  .pv-urgence label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .pv-urgence input { width: 14px; height: 14px; accent-color: #b00; }
+  .pv-urgence span { color: #7a4a4a; }
+  .cart-page-livraison { display: block; margin-top: 4px; color: #5b6188; font-size: 12.5px; font-weight: normal; }
 </style>
 
   <script>
@@ -15205,6 +15415,8 @@ function afficherErreurPaiement(message) {
     window.rendreOptionFiche = rendreOptionFiche = function () {
       rendreOptionOrigine.apply(this, arguments);
       var epuise = !!optionCourante && stockAchetable_(optionCourante) <= 0;
+      var imagePrincipale = document.getElementById("product-main-image");
+      if (imagePrincipale) imagePrincipale.classList.toggle("is-rupture", epuise);
       var qte = document.getElementById("product-quantity"), champ = qte && qte.closest(".product-field");
       if (champ) champ.hidden = epuise;
       var tot = document.getElementById("product-total"); if (tot && epuise) tot.hidden = true;
